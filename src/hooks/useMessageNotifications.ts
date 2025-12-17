@@ -96,7 +96,6 @@ export function useMessageNotifications() {
               url: `/talk3/?room=${newMessage.room_id}`,
               roomId: newMessage.room_id,
             },
-            timestamp: Date.now(),
           });
         }
       )
