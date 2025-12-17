@@ -76,10 +76,7 @@ export function usePushNotification() {
             badge: '/talk3/icon-192.png',
             requireInteraction: false,
             silent: false,
-            // iOS에서 알림이 더 잘 보이도록 설정
-            vibrate: [200, 100, 200], // iOS에서는 무시될 수 있음
             tag: options?.tag || 'message', // 같은 태그의 알림은 하나만 표시
-            renotify: true, // 같은 태그의 새 알림이 오면 다시 알림
           });
         })
         .then(() => {

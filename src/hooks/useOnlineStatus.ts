@@ -48,14 +48,6 @@ export function useOnlineStatus() {
 
     // 페이지 언로드 시 오프라인 처리
     const handleBeforeUnload = async () => {
-      // navigator.sendBeacon을 사용하여 비동기적으로 처리
-      // (페이지가 닫히는 동안에도 실행됨)
-      const data = JSON.stringify({
-        id: user.id,
-        last_seen_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-      
       // Supabase REST API를 직접 호출 (fetch는 페이지 종료 시 취소될 수 있음)
       // 하지만 sendBeacon은 POST만 지원하므로, 여기서는 마지막 업데이트만 수행
       try {
