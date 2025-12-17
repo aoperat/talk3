@@ -31,13 +31,22 @@ BEGIN
     RAISE EXCEPTION 'Room not found';
   END IF;
 
-  -- 방 생성자이거나 자기 자신을 추가하는 경우만 허용
-  IF v_created_by = auth.uid()::text OR p_user_id = auth.uid()::text THEN
-    -- RLS를 비활성화한 상태에서 직접 삽입 (정책 우회)
+  -- 권한 체크:
+  -- 1. 자기 자신을 추가하는 경우 (항상 허용)
+  -- 2. 방 생성자가 다른 사용자를 추가하는 경우
+  -- 3. 이미 참여한 사용자를 다시 추가하려는 경우 (ON CONFLICT로 처리)
+  IF p_user_id = auth.uid()::text THEN
+    -- 자기 자신을 추가하는 경우 - 항상 허용
+    INSERT INTO room_participants (room_id, user_id)
+    VALUES (p_room_id, p_user_id::uuid)
+    ON CONFLICT (room_id, user_id) DO NOTHING;
+  ELSIF v_created_by = auth.uid()::text THEN
+    -- 방 생성자가 다른 사용자를 추가하는 경우
     INSERT INTO room_participants (room_id, user_id)
     VALUES (p_room_id, p_user_id::uuid)
     ON CONFLICT (room_id, user_id) DO NOTHING;
   ELSE
+    -- 권한 없음
     RAISE EXCEPTION 'Not authorized to add participants to this room';
   END IF;
 END;

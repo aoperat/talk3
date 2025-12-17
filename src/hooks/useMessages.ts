@@ -470,58 +470,37 @@ export function useMessages(roomId: number | null) {
         .single();
 
       if (roomData) {
-        // 방의 모든 참여자 가져오기 (메시지에서 user_id 추출)
-        const { data: messagesData } = await supabase
-          .from('messages')
-          .select('user_id')
-          .eq('room_id', roomId);
-
-        if (messagesData) {
-          // 메시지를 보낸 모든 사용자 ID 수집 (중복 제거)
-          const userIds = new Set<string>();
-          messagesData.forEach((msg) => {
-            if (msg.user_id) {
-              userIds.add(msg.user_id);
-            }
+        // 현재 사용자만 참여자로 추가 (자기 자신 추가는 항상 허용됨)
+        const { error: rpcError } = await (supabase as any).rpc('add_room_participant', {
+          p_room_id: roomId,
+          p_user_id: user.id.toString(),
+        });
+        
+        if (rpcError) {
+          console.error('❌ [RPC] Error adding self as participant:', rpcError);
+          console.error('❌ [RPC] Error details:', {
+            code: rpcError.code,
+            message: rpcError.message,
+            details: rpcError.details,
+            hint: rpcError.hint,
+            roomId,
+            userId: user.id.toString()
           });
-
-          // 현재 사용자도 추가
-          userIds.add(user.id.toString());
-
-          // 각 사용자를 참여자로 추가 (이미 있으면 무시됨)
-          for (const userId of userIds) {
-            const { error: rpcError } = await (supabase as any).rpc('add_room_participant', {
-              p_room_id: roomId,
-              p_user_id: userId, // userIds는 Set<string>이므로 이미 string 타입
-            });
-            
-            if (rpcError) {
-              console.error('❌ [RPC] Error adding participant:', rpcError);
-              console.error('❌ [RPC] Error details:', {
-                code: rpcError.code,
-                message: rpcError.message,
-                details: rpcError.details,
-                hint: rpcError.hint,
-                roomId,
-                userId
-              });
-              
-              // RPC 함수가 없으면 직접 삽입 시도
-              if (rpcError.code === 'PGRST202' || rpcError.code === '42883' || rpcError.code === '42809') {
-                console.log('🔄 [RPC] Fallback: 직접 삽입 시도');
-                const { error: fallbackError } = await supabase
-                  .from('room_participants')
-                  .insert({ room_id: roomId, user_id: userId });
-                if (fallbackError) {
-                  console.error('❌ [RPC] Fallback insert failed:', fallbackError);
-                } else {
-                  console.log('✅ [RPC] Fallback insert 성공');
-                }
-              }
+          
+          // RPC 함수가 없으면 직접 삽입 시도
+          if (rpcError.code === 'PGRST202' || rpcError.code === '42883' || rpcError.code === '42809') {
+            console.log('🔄 [RPC] Fallback: 직접 삽입 시도');
+            const { error: fallbackError } = await supabase
+              .from('room_participants')
+              .insert({ room_id: roomId, user_id: user.id });
+            if (fallbackError) {
+              console.error('❌ [RPC] Fallback insert failed:', fallbackError);
             } else {
-              console.log('✅ [RPC] add_room_participant 성공:', userId);
+              console.log('✅ [RPC] Fallback insert 성공');
             }
           }
+        } else {
+          console.log('✅ [RPC] add_room_participant 성공 (self)');
         }
       }
 
