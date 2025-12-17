@@ -248,6 +248,8 @@ export function useMessages(roomId: number | null) {
             pollInterval = null;
             console.log('✅ [Messages] Realtime 연결됨 - 폴링 비활성화');
           }
+          // 연결 체크 타임아웃도 취소 (구독 성공했으므로)
+          clearTimeout(connectionCheckTimeout);
           // 연결 체크 타임아웃도 클리어
           clearTimeout(connectionCheckTimeout);
         } else if (status === 'CHANNEL_ERROR') {

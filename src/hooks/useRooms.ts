@@ -249,6 +249,8 @@ export function useRooms() {
             pollInterval = null;
             console.log('✅ [Rooms] Realtime 연결됨 - 폴링 비활성화');
           }
+          // 연결 체크 타임아웃도 취소 (구독 성공했으므로)
+          clearTimeout(connectionCheckTimeout);
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ [Realtime] 방 목록 구독 오류!', err);
           startPollingIfNeeded();
