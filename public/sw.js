@@ -96,18 +96,28 @@ self.addEventListener('message', (event) => {
   // Show notification from client
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     const { title, options } = event.data;
+    console.log('[Service Worker] Showing notification:', title, options);
     self.registration.showNotification(title, {
       ...options,
       icon: options.icon || '/talk3/icon-192.png',
       badge: options.badge || '/talk3/icon-192.png',
       requireInteraction: false,
       silent: false,
+      // iOS PWA 최적화
+      tag: options.tag || 'message',
+      renotify: true,
+      vibrate: [200, 100, 200], // iOS에서는 무시될 수 있음
+    }).then(() => {
+      console.log('[Service Worker] Notification shown successfully');
+    }).catch((error) => {
+      console.error('[Service Worker] Error showing notification:', error);
     });
   }
 });
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
+  console.log('[Service Worker] Notification clicked:', event.notification.data);
   event.notification.close();
   
   const data = event.notification.data;
@@ -118,17 +128,26 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       // Check if there's already a window/tab open
       for (let client of clients) {
-        if (client.url.includes('/talk3/') && 'focus' in client) {
+        // iOS PWA: URL이 포함된 모든 클라이언트 확인
+        if (client.url.includes('/talk3/') || client.url.includes('talk3')) {
           // 기존 창에 메시지 전송하여 방으로 이동
           client.postMessage({
             type: 'NOTIFICATION_CLICK',
             roomId: roomId,
           });
-          return client.focus();
+          // iOS PWA: focus()가 실패할 수 있으므로 try-catch
+          try {
+            if ('focus' in client && typeof client.focus === 'function') {
+              return client.focus();
+            }
+          } catch (error) {
+            console.error('[Service Worker] Error focusing client:', error);
+          }
         }
       }
       // If not, open a new window/tab
       if (self.clients.openWindow) {
+        console.log('[Service Worker] Opening new window:', urlToOpen);
         return self.clients.openWindow(urlToOpen);
       }
     })

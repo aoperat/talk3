@@ -47,10 +47,25 @@ export function useMessageNotifications() {
             return;
           }
 
-          // 페이지가 포커스되어 있으면 알림 표시 안 함 (사용자가 앱을 보고 있을 때)
-          if (document.hasFocus()) {
+          // iOS PWA 최적화: 백그라운드에서도 알림을 받을 수 있도록
+          // 현재 방을 보고 있고 포커스가 있을 때만 알림 스킵
+          const currentUrl = window.location.href;
+          const urlParams = new URLSearchParams(window.location.search);
+          const currentRoomId = urlParams.get('room');
+          const isCurrentRoom = currentRoomId && parseInt(currentRoomId) === newMessage.room_id;
+          
+          // 현재 방을 보고 있고 앱이 포커스되어 있으면 알림 스킵
+          if (document.hasFocus() && isCurrentRoom) {
+            console.log('[MessageNotifications] 현재 방의 메시지 - 알림 스킵');
             return;
           }
+          
+          // iOS에서는 앱이 백그라운드에 있어도 알림을 받아야 함
+          console.log('[MessageNotifications] 새 메시지 알림 표시:', {
+            roomId: newMessage.room_id,
+            hasFocus: document.hasFocus(),
+            isCurrentRoom
+          });
 
           // 권한이 없으면 알림 표시 안 함
           if (permission !== 'granted') {

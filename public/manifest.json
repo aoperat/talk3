@@ -4,6 +4,9 @@
   "description": "언어 장벽 없이 대화하는 메신저",
   "start_url": "/talk3/",
   "display": "standalone",
+  "permissions": [
+    "notifications"
+  ],
   "background_color": "#ffffff",
   "theme_color": "#4f46e5",
   "orientation": "portrait",
