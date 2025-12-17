@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from './useAuth';
 
 export function usePushNotification() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isSupported, setIsSupported] = useState(false);
-  const { user } = useAuth();
 
   useEffect(() => {
     // 브라우저 지원 확인

@@ -17,7 +17,7 @@ export default function NavigationRail({
 }: NavigationRailProps) {
   return (
     <nav 
-      className="hidden md:flex flex-col w-[72px] bg-[#1E1E24] h-full items-center py-6 space-y-8 z-50 flex-shrink-0" 
+      className="hidden md:flex flex-col w-[72px] bg-[#1E1E24] h-full items-center py-6 space-y-8 z-40 flex-shrink-0" 
       style={{ paddingTop: 'max(1.5rem, calc(1.5rem + env(safe-area-inset-top)))' }}
     >
       <button

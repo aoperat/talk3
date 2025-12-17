@@ -18,15 +18,6 @@ export function useMessageNotifications() {
       // requestPermission();
     }
 
-    // 현재 활성화된 방 ID 추적 (알림을 보내지 않기 위해)
-    let currentActiveRoomId: number | null = null;
-    
-    // 페이지 포커스 시 현재 방 ID 업데이트
-    const handleFocus = () => {
-      // URL이나 다른 방법으로 현재 방 ID를 확인할 수 있다면 여기서 설정
-      // 현재는 메시지 이벤트에서 처리
-    };
-
     // 메시지 알림을 위한 채널
     const channel = supabase
       .channel(`notifications:${user.id}`, {
@@ -105,7 +96,6 @@ export function useMessageNotifications() {
               url: `/talk3/?room=${newMessage.room_id}`,
               roomId: newMessage.room_id,
             },
-            vibrate: [200, 100, 200],
             timestamp: Date.now(),
           });
         }
