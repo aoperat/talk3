@@ -260,14 +260,23 @@ export function useMessages(roomId: number | null) {
           error: err,
           channel: channelName,
           roomId: currentRoomId,
-          filter: `room_id=eq.${currentRoomId}`,
+          filter: '없음 (모든 메시지 수신)', // 필터 제거됨
           timestamp: new Date().toISOString(),
           errorDetails: err ? {
             message: err.message,
             name: err.name,
             stack: err.stack
-          } : null
+          } : null,
+          channelState: channel.state,
+          channelTopic: channel.topic
         });
+        
+        // 구독 성공 시 채널 정보 상세 로깅
+        if (status === 'SUBSCRIBED') {
+          console.log('🎯 [Realtime] 채널 구독 완료 - 이제 메시지 수신 대기 중...');
+          console.log('🎯 [Realtime] 테스트: 메시지를 전송하면 아래 로그가 나타나야 합니다:');
+          console.log('🎯 [Realtime] 예상 로그: "🔥 [Realtime] 필터 없이 받은 데이터:"');
+        }
         
         if (status === 'SUBSCRIBED') {
           isRealtimeConnected = true; // Realtime 연결 상태 표시
@@ -275,7 +284,8 @@ export function useMessages(roomId: number | null) {
           console.log('🔍 [Realtime] 채널 정보:', {
             channel: channelName,
             roomId: currentRoomId,
-            filter: `room_id=eq.${currentRoomId}`,
+            filter: '없음 (모든 메시지 수신)', // 필터 제거됨
+            hasFilter: false, // 필터 없음 확인
             subscribed: true,
             isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
           });
