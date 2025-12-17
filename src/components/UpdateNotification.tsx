@@ -10,8 +10,12 @@ export default function UpdateNotification() {
     if ('serviceWorker' in navigator) {
       let registration: ServiceWorkerRegistration | null = null;
 
+      // 로컬 개발: /sw.js, 프로덕션: /talk3/sw.js
+      const swPath = import.meta.env.PROD ? '/talk3/sw.js' : '/sw.js';
+      const swScope = import.meta.env.PROD ? '/talk3/' : '/';
+      
       navigator.serviceWorker
-        .register('/talk3/sw.js', { scope: '/talk3/' })
+        .register(swPath, { scope: swScope })
         .then((reg) => {
           registration = reg;
           console.log('[UpdateNotification] Service Worker registered');

@@ -493,7 +493,7 @@ export function useMessages(roomId: number | null) {
             try {
               await (supabase as any).rpc('add_room_participant', {
                 p_room_id: roomId,
-                p_user_id: userId,
+                p_user_id: typeof userId === 'string' ? userId : userId.toString(), // UUID를 text로 변환
               });
             } catch (err) {
               // RPC 함수가 없으면 직접 삽입 시도

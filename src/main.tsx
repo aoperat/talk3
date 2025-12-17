@@ -5,8 +5,12 @@ import './index.css'
 // Service Worker 등록 (알림을 위해 먼저 등록)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    // 로컬 개발: /sw.js, 프로덕션: /talk3/sw.js
+    const swPath = import.meta.env.PROD ? '/talk3/sw.js' : '/sw.js';
+    const swScope = import.meta.env.PROD ? '/talk3/' : '/';
+    
     navigator.serviceWorker
-      .register('/talk3/sw.js', { scope: '/talk3/' })
+      .register(swPath, { scope: swScope })
       .then((registration) => {
         console.log('[Main] Service Worker registered:', registration.scope);
       })
