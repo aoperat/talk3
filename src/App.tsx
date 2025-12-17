@@ -16,11 +16,15 @@ import Modal from './components/Modal';
 import UpdateNotification from './components/UpdateNotification';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { LogOut, Edit2, Save, X } from 'lucide-react';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
 
 function App() {
   console.log('🚀 App 컴포넌트 렌더링 시작');
   
   const { user, loading: authLoading } = useAuth();
+  
+  // 온라인 상태 관리
+  useOnlineStatus();
   const { rooms, loading: roomsLoading, createRoom, leaveRoom } = useRooms();
   
   console.log('👤 사용자 상태:', { user: user?.id, authLoading });

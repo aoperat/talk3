@@ -9,11 +9,24 @@ export function useMessageNotifications() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !user || !isSupported) {
+      console.log('[MessageNotifications] 알림 구독 스킵:', {
+        isSupabaseConfigured,
+        hasUser: !!user,
+        isSupported,
+        permission
+      });
       return;
     }
 
+    console.log('[MessageNotifications] 알림 구독 시작:', {
+      userId: user.id,
+      permission,
+      isSupported
+    });
+
     // 권한 요청 (처음 한 번만)
     if (permission === 'default') {
+      console.log('[MessageNotifications] 알림 권한이 default 상태입니다. 사용자가 설정에서 요청해야 합니다.');
       // 자동으로 권한 요청하지 않고, 사용자가 설정에서 요청하도록 함
       // requestPermission();
     }
@@ -49,7 +62,6 @@ export function useMessageNotifications() {
 
           // iOS PWA 최적화: 백그라운드에서도 알림을 받을 수 있도록
           // 현재 방을 보고 있고 포커스가 있을 때만 알림 스킵
-          const currentUrl = window.location.href;
           const urlParams = new URLSearchParams(window.location.search);
           const currentRoomId = urlParams.get('room');
           const isCurrentRoom = currentRoomId && parseInt(currentRoomId) === newMessage.room_id;
@@ -69,8 +81,20 @@ export function useMessageNotifications() {
 
           // 권한이 없으면 알림 표시 안 함
           if (permission !== 'granted') {
+            console.log('[MessageNotifications] 알림 권한 없음 - 알림 스킵:', {
+              permission,
+              messageId: newMessage.id,
+              roomId: newMessage.room_id
+            });
             return;
           }
+          
+          console.log('[MessageNotifications] 알림 표시 준비:', {
+            messageId: newMessage.id,
+            roomId: newMessage.room_id,
+            hasFocus: document.hasFocus(),
+            isCurrentRoom
+          });
 
           // 방 정보 가져오기
           const { data: room } = await supabase
