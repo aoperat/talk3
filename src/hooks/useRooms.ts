@@ -147,7 +147,8 @@ export function useRooms() {
       return;
     }
 
-    const channelName = `rooms_updates_${user.id}_${Date.now()}`;
+    // 채널 이름을 더 안정적으로 생성 (타임스탬프 제거)
+    const channelName = `rooms_updates_${user.id}`;
     console.log('📺 방 목록 채널 이름:', channelName);
     
     const channel = supabase
@@ -242,12 +243,21 @@ export function useRooms() {
         console.log('📡 [Realtime] 방 목록 채널 구독 상태:', status);
         if (status === 'SUBSCRIBED') {
           console.log('✅ [Realtime] 방 목록 구독 성공!');
+          // Realtime이 연결되면 폴링 비활성화
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            console.log('✅ [Rooms] Realtime 연결됨 - 폴링 비활성화');
+          }
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ [Realtime] 방 목록 구독 오류!', err);
+          startPollingIfNeeded();
         } else if (status === 'TIMED_OUT') {
           console.error('⏱️ [Realtime] 방 목록 구독 타임아웃!');
+          startPollingIfNeeded();
         } else if (status === 'CLOSED') {
           console.warn('🔴 [Realtime] 방 목록 구독 닫힘');
+          startPollingIfNeeded();
         } else {
           console.warn('⚠️ [Realtime] 방 목록 알 수 없는 상태:', status);
         }
@@ -255,14 +265,64 @@ export function useRooms() {
     
     console.log('🔌 방 목록 Realtime 채널 구독 요청 완료');
 
-    // Realtime이 작동하지 않을 경우를 대비한 polling 폴백
-    const pollInterval = setInterval(() => {
-      loadRooms();
-    }, 3000); // 3초마다 방 목록 업데이트
+    // Realtime이 작동하지 않을 경우를 대비한 최소한의 폴링
+    // 입력 중이 아닐 때만 실행, 변경된 부분만 업데이트
+    let pollInterval: NodeJS.Timeout | null = null;
+    
+    const startPollingIfNeeded = () => {
+      // 이미 폴링 중이면 스킵
+      if (pollInterval) return;
+      
+      // 입력 필드에 포커스가 있으면 폴링 시작 안 함
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        // 입력 중이면 나중에 다시 시도 (5초 후)
+        setTimeout(startPollingIfNeeded, 5000);
+        return;
+      }
+      
+      pollInterval = setInterval(() => {
+        // 입력 필드에 포커스가 있으면 이번 폴링 완전히 스킵 (키보드가 올라와 있을 때)
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+          console.log('⌨️ [Rooms Polling] 입력 중 - 폴링 스킵');
+          return;
+        }
+        
+        // 입력 필드가 포커스를 잃었는지 확인 (더블 체크)
+        const isInputFocused = document.activeElement && 
+          (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+        if (isInputFocused) {
+          console.log('⌨️ [Rooms Polling] 입력 중 - 폴링 스킵');
+          return;
+        }
+        
+        // 부분 업데이트: 변경된 방만 업데이트 (전체 새로고침 없이)
+        loadRooms();
+      }, 30000); // 30초마다 폴링 (Realtime이 작동하지 않을 때만)
+      
+      console.log('🔄 [Rooms] 폴링 시작 (Realtime 연결 실패)');
+    };
+    
+    // Realtime 연결 실패 감지를 위한 타임아웃 (10초 후)
+    const connectionCheckTimeout = setTimeout(() => {
+      // Realtime이 연결되지 않았으면 폴링 시작
+      if (!pollInterval) {
+        startPollingIfNeeded();
+      }
+    }, 10000);
 
     return () => {
-      clearInterval(pollInterval);
-      supabase.removeChannel(channel);
+      console.log('🧹 [Realtime] 방 목록 채널 정리:', channelName);
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      clearTimeout(connectionCheckTimeout);
+      // 채널 제거 전에 잠시 대기 (React Strict Mode에서 즉시 제거되는 것 방지)
+      setTimeout(() => {
+        supabase.removeChannel(channel);
+      }, 100);
     };
   }, [loadRooms, user, isSupabaseConfigured]);
 

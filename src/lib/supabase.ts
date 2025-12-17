@@ -16,7 +16,7 @@ export const supabase: SupabaseClient<Database> = isSupabaseConfigured
         params: {
           eventsPerSecond: 10,
         },
-        log_level: 'debug' as any,
+        log_level: 'info' as any, // debug에서 info로 변경 (너무 많은 로그 방지)
       },
     })
   : (null as unknown as SupabaseClient<Database>);

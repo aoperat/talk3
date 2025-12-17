@@ -90,10 +90,11 @@ export function useMessages(roomId: number | null) {
     // 현재 roomId를 캡처하여 클로저 문제 방지
     const currentRoomId = roomId;
 
-    // 초기 메시지 로드
-    loadMessages(currentRoomId);
-
-    loadMessages();
+    // 초기 메시지 로드 (중복 호출 제거)
+    loadMessages(currentRoomId).catch((error) => {
+      console.error('Error loading initial messages:', error);
+      setLoading(false);
+    });
 
     // Realtime 구독 설정
     if (!supabase) {
@@ -101,28 +102,47 @@ export function useMessages(roomId: number | null) {
       return;
     }
 
-    const channelName = `messages:${currentRoomId}:${Date.now()}`;
+    // 채널 이름을 더 안정적으로 생성 (타임스탬프 제거, roomId만 사용)
+    const channelName = `messages:${currentRoomId}`;
+    console.log('🔌 [Realtime] 채널 생성:', channelName, 'roomId:', currentRoomId);
+    
+    // Realtime 구독 설정
     const channel = supabase
-      .channel(channelName, {
-        config: {
-          broadcast: { self: true },
-        },
-      })
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          // 필터 제거 - 모든 메시지를 받고 클라이언트에서 필터링
+          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
         },
         async (payload) => {
+          console.log('📨 [Realtime] 메시지 이벤트 수신 (원본):', JSON.stringify(payload, null, 2));
+          console.log('📨 [Realtime] 메시지 이벤트 수신:', payload);
           const newMessage = payload.new as Message;
-          // 현재 방의 메시지만 처리 (클로저 문제 방지)
-          if (newMessage.room_id !== currentRoomId) {
+          
+          // payload 구조 확인
+          if (!payload.new) {
+            console.error('❌ [Realtime] payload.new가 없습니다!', payload);
             return;
           }
-          console.log('📨 [Realtime] 메시지 수신 (roomId:', currentRoomId, '):', newMessage);
+          
+          // 현재 방의 메시지인지 확인 (필터가 있지만 이중 체크)
+          if (newMessage.room_id !== currentRoomId) {
+            console.log('⚠️ [Realtime] 다른 방의 메시지 무시:', {
+              receivedRoomId: newMessage.room_id,
+              currentRoomId: currentRoomId
+            });
+            return;
+          }
+          
+          console.log('📨 [Realtime] 메시지 수신 (roomId:', currentRoomId, '):', {
+            id: newMessage.id,
+            content: newMessage.content_ko,
+            userId: newMessage.user_id,
+            createdAt: newMessage.created_at
+          });
           
           // 발신자 프로필 정보 가져오기
           let senderName: string | undefined = undefined;
@@ -144,9 +164,17 @@ export function useMessages(roomId: number | null) {
             
             // 중복 체크: 이미 있는 메시지면 추가하지 않음
             if (filteredPrev.some((msg) => msg.id === newMessage.id)) {
+              console.log('⚠️ [Realtime] 중복 메시지 무시:', newMessage.id);
               return filteredPrev;
             }
-            console.log('✅ [Realtime] 새 메시지 추가:', newMessage.content_ko);
+            
+            console.log('✅ [Realtime] 새 메시지 추가:', {
+              id: newMessage.id,
+              content: newMessage.content_ko,
+              prevCount: filteredPrev.length,
+              newCount: filteredPrev.length + 1
+            });
+            
             const formattedMessage: MessageWithSender = {
               ...newMessage,
               sender: newMessage.user_id === user?.id ? 'me' : 'friend',
@@ -169,14 +197,10 @@ export function useMessages(roomId: number | null) {
           event: 'UPDATE',
           schema: 'public',
           table: 'messages',
-          // 필터 제거
+          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링
         },
         (payload) => {
           const updatedMessage = payload.new as Message;
-          // 현재 방의 메시지만 처리
-          if (updatedMessage.room_id !== currentRoomId) {
-            return;
-          }
           console.log('🔄 [Realtime] 메시지 업데이트 (roomId:', currentRoomId, '):', updatedMessage);
           setMessages((prev) => {
             // 현재 방의 메시지만 유지
@@ -194,85 +218,223 @@ export function useMessages(roomId: number | null) {
         }
       )
       .subscribe((status, err) => {
+        console.log('📡 [Realtime] 메시지 채널 구독 상태:', status, 'roomId:', currentRoomId);
+        console.log('📡 [Realtime] 구독 상태 상세:', {
+          status,
+          error: err,
+          channel: channelName,
+          roomId: currentRoomId,
+          filter: `room_id=eq.${currentRoomId}`,
+          timestamp: new Date().toISOString(),
+          errorDetails: err ? {
+            message: err.message,
+            name: err.name,
+            stack: err.stack
+          } : null
+        });
+        
         if (status === 'SUBSCRIBED') {
           console.log('✅ [Realtime] 메시지 구독 성공! (roomId:', currentRoomId, ')');
+          console.log('🔍 [Realtime] 채널 정보:', {
+            channel: channelName,
+            roomId: currentRoomId,
+            filter: `room_id=eq.${currentRoomId}`,
+            subscribed: true
+          });
+          // Realtime이 연결되면 폴링 비활성화
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            console.log('✅ [Messages] Realtime 연결됨 - 폴링 비활성화');
+          }
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ [Realtime] 구독 오류!', err);
+          console.error('❌ [Realtime] 오류 상세:', {
+            error: err,
+            channel: channelName,
+            roomId: currentRoomId,
+            errorMessage: err?.message,
+            errorStack: err?.stack
+          });
+          // 에러 발생 시 폴링 시작
+          startPollingIfNeeded();
         } else if (status === 'TIMED_OUT') {
           console.error('⏱️ [Realtime] 구독 타임아웃!');
+          console.error('⏱️ [Realtime] 타임아웃 상세:', {
+            channel: channelName,
+            roomId: currentRoomId,
+            timestamp: new Date().toISOString()
+          });
+          // 타임아웃 시 폴링 시작
+          startPollingIfNeeded();
         } else if (status === 'CLOSED') {
-          console.warn('🔴 [Realtime] 구독 닫힘');
+          // CLOSED 상태는 cleanup 함수에서 호출될 수 있으므로, 
+          // 실제 에러인지 확인 필요
+          const isCleanup = !pollInterval; // pollInterval이 없으면 cleanup일 가능성
+          if (!isCleanup) {
+            console.warn('🔴 [Realtime] 구독 닫힘 (예상치 못한 종료)');
+            console.warn('🔴 [Realtime] 구독 닫힘 상세:', {
+              channel: channelName,
+              roomId: currentRoomId,
+              timestamp: new Date().toISOString(),
+              error: err
+            });
+            // 연결 종료 시 폴링 시작
+            startPollingIfNeeded();
+          } else {
+            console.log('🔴 [Realtime] 구독 닫힘 (정상 cleanup)');
+          }
+        } else {
+          console.warn('⚠️ [Realtime] 알 수 없는 상태:', status);
         }
       });
     
-    // Realtime이 작동하지 않을 경우를 대비한 polling 폴백
-    const pollInterval = setInterval(async () => {
-      if (!isSupabaseConfigured || !currentRoomId) return;
+    // Realtime이 작동하지 않을 경우를 대비한 최소한의 폴링
+    // 입력 중이 아닐 때만 실행, 변경된 메시지만 가져옴
+    let pollInterval: NodeJS.Timeout | null = null;
+    let lastMessageTimestamp: string | null = null;
+    
+    const startPollingIfNeeded = () => {
+      // 이미 폴링 중이면 스킵
+      if (pollInterval) return;
       
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('room_id', currentRoomId)
-        .order('created_at', { ascending: true });
+      // 입력 필드에 포커스가 있으면 폴링 시작 안 함
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        // 입력 중이면 나중에 다시 시도 (5초 후)
+        setTimeout(startPollingIfNeeded, 5000);
+        return;
+      }
       
-      if (data && data.length > 0) {
-        // 발신자 ID 수집
-        const senderIds = [...new Set(data.map((msg: Message) => msg.user_id).filter(Boolean))] as string[];
-        
-        // 발신자 프로필 정보 가져오기
-        let profileMap = new Map<string, { name?: string; email?: string }>();
-        if (senderIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, name, email')
-            .in('id', senderIds);
-          
-          if (profiles) {
-            profileMap = new Map(profiles.map((p) => [p.id, { 
-              name: p.name ?? undefined, 
-              email: p.email ?? undefined 
-            }]));
-          }
+      pollInterval = setInterval(async () => {
+        // 입력 필드에 포커스가 있으면 이번 폴링 완전히 스킵 (키보드가 올라와 있을 때)
+        const activeElement = document.activeElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+          console.log('⌨️ [Polling] 입력 중 - 폴링 스킵');
+          return;
         }
         
-        setMessages((prev) => {
-          // 현재 방의 메시지만 유지
-          const filteredPrev = prev.filter((msg) => msg.room_id === currentRoomId);
-          const prevIds = new Set(filteredPrev.map((m) => m.id));
+        // 입력 필드가 포커스를 잃었는지 확인 (더블 체크)
+        const isInputFocused = document.activeElement && 
+          (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+        if (isInputFocused) {
+          console.log('⌨️ [Polling] 입력 중 - 폴링 스킵');
+          return;
+        }
+        
+        if (!isSupabaseConfigured || !currentRoomId) return;
+        
+        // 마지막 메시지 이후의 새 메시지만 가져오기 (부분 업데이트만)
+        const query = supabase
+          .from('messages')
+          .select('*')
+          .eq('room_id', currentRoomId)
+          .order('created_at', { ascending: true });
+        
+        if (lastMessageTimestamp) {
+          query.gt('created_at', lastMessageTimestamp);
+        } else {
+          // 타임스탬프가 없으면 현재 메시지 목록의 마지막 메시지 타임스탬프 사용
+          setMessages((prev) => {
+            if (prev.length > 0) {
+              const lastMsg = prev[prev.length - 1];
+              if (lastMsg && lastMsg.created_at) {
+                lastMessageTimestamp = lastMsg.created_at;
+              }
+            }
+            return prev;
+          });
           
-          const newMessages = data
-            .filter((msg) => !prevIds.has(msg.id))
-            .map((msg: Message) => {
-              const senderProfile = msg.user_id ? profileMap.get(msg.user_id) : null;
-              const senderName = senderProfile?.name || senderProfile?.email?.split('@')[0] || 'User';
-              
-              const formattedMessage: MessageWithSender = {
-                ...msg,
-                sender: (msg.user_id === user?.id ? 'me' : 'friend') as 'me' | 'friend',
-                text: msg.content_ko || '',
-                textEn: msg.content_en,
-                time: new Date(msg.created_at).toLocaleTimeString('ko-KR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }),
-                senderName: msg.user_id === user?.id ? undefined : senderName,
-                senderId: msg.user_id || undefined,
-              };
-              return formattedMessage;
-            });
-          
-          if (newMessages.length > 0) {
-            console.log('📨 [Polling] 새 메시지 발견 (roomId:', currentRoomId, '):', newMessages.length);
-            return [...filteredPrev, ...newMessages];
+          // 타임스탬프가 여전히 없으면 이번 폴링 스킵
+          if (!lastMessageTimestamp) {
+            return;
           }
-          return filteredPrev;
-        });
+          
+          query.gt('created_at', lastMessageTimestamp);
+        }
+        
+        const { data } = await query;
+        
+        if (data && data.length > 0) {
+          // 마지막 메시지 타임스탬프 업데이트
+          lastMessageTimestamp = data[data.length - 1].created_at;
+          
+          // 발신자 ID 수집 (새 메시지만)
+          const senderIds = [...new Set(data.map((msg: Message) => msg.user_id).filter(Boolean))] as string[];
+          
+          // 발신자 프로필 정보 가져오기
+          let profileMap = new Map<string, { name?: string; email?: string }>();
+          if (senderIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('id, name, email')
+              .in('id', senderIds);
+            
+            if (profiles) {
+              profileMap = new Map(profiles.map((p) => [p.id, { 
+                name: p.name ?? undefined, 
+                email: p.email ?? undefined 
+              }]));
+            }
+          }
+          
+          // 새 메시지만 추가 (전체 새로고침 없이)
+          setMessages((prev) => {
+            const filteredPrev = prev.filter((msg) => msg.room_id === currentRoomId);
+            const prevIds = new Set(filteredPrev.map((m) => m.id));
+            
+            const newMessages = data
+              .filter((msg) => !prevIds.has(msg.id))
+              .map((msg: Message) => {
+                const senderProfile = msg.user_id ? profileMap.get(msg.user_id) : null;
+                const senderName = senderProfile?.name || senderProfile?.email?.split('@')[0] || 'User';
+                
+                const formattedMessage: MessageWithSender = {
+                  ...msg,
+                  sender: (msg.user_id === user?.id ? 'me' : 'friend') as 'me' | 'friend',
+                  text: msg.content_ko || '',
+                  textEn: msg.content_en,
+                  time: new Date(msg.created_at).toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                  senderName: msg.user_id === user?.id ? undefined : senderName,
+                  senderId: msg.user_id || undefined,
+                };
+                return formattedMessage;
+              });
+            
+            if (newMessages.length > 0) {
+              console.log('📨 [Polling] 새 메시지 발견 (roomId:', currentRoomId, '):', newMessages.length);
+              return [...filteredPrev, ...newMessages];
+            }
+            return filteredPrev;
+          });
+        }
+      }, 30000); // 30초마다 폴링 (Realtime이 작동하지 않을 때만)
+      
+      console.log('🔄 [Messages] 폴링 시작 (Realtime 연결 실패)');
+    };
+    
+    // Realtime 연결 실패 감지를 위한 타임아웃 (10초 후)
+    const connectionCheckTimeout = setTimeout(() => {
+      // Realtime이 연결되지 않았으면 폴링 시작
+      if (!pollInterval) {
+        startPollingIfNeeded();
       }
-    }, 2000); // 2초마다 폴링
+    }, 10000);
 
     return () => {
-      clearInterval(pollInterval);
-      supabase.removeChannel(channel);
+      console.log('🧹 [Realtime] 메시지 채널 정리:', channelName, 'roomId:', currentRoomId);
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      clearTimeout(connectionCheckTimeout);
+      // 채널 제거 전에 잠시 대기 (React Strict Mode에서 즉시 제거되는 것 방지)
+      setTimeout(() => {
+        supabase.removeChannel(channel);
+      }, 100);
     };
   }, [roomId, user?.id]);
 

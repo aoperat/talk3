@@ -67,13 +67,20 @@ export default function ChatView({
       />
 
       {/* 메시지 리스트 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-[#F8F9FD] scrollbar-hide">
-        {messages.length === 0 ? (
+      <div className="flex-1 overflow-y-auto p-4 space-y-5 bg-[#F8F9FD] scrollbar-hide min-h-0">
+        {disabled && messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center opacity-40">
+            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4 animate-pulse">
+              <MessageSquare className="w-8 h-8 text-gray-400" />
+            </div>
+            <p className="text-sm text-gray-500 font-medium">메시지를 불러오는 중...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center opacity-40">
             <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4">
               <MessageSquare className="w-8 h-8 text-gray-400" />
             </div>
-            <p className="text-sm text-gray-500 font-medium">Start a conversation!</p>
+            <p className="text-sm text-gray-500 font-medium">대화를 시작하세요!</p>
           </div>
         ) : (
           messages.map((msg) => (
