@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useRooms } from './hooks/useRooms';
 import { useMessages } from './hooks/useMessages';
@@ -12,6 +12,7 @@ import PeopleTab from './components/PeopleTab';
 import NavigationRail from './components/NavigationRail';
 import MobileBottomNav from './components/MobileBottomNav';
 import Modal from './components/Modal';
+import UpdateNotification from './components/UpdateNotification';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { LogOut, Edit2, Save, X } from 'lucide-react';
 
@@ -32,8 +33,46 @@ function App() {
     declineRequest,
   } = useFriendRequests();
   const { profile, updateProfile } = useProfile();
-  const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'chats' | 'people'>('chats');
+  
+  // localStorage에서 초기 상태 복원
+  const [activeTab, setActiveTab] = useState<'chats' | 'people'>(() => {
+    const saved = localStorage.getItem('activeTab');
+    return (saved === 'chats' || saved === 'people') ? saved : 'chats';
+  });
+  
+  const [activeRoomId, setActiveRoomId] = useState<number | null>(() => {
+    // 친구 탭이면 대화창을 열지 않음
+    const savedTab = localStorage.getItem('activeTab');
+    if (savedTab === 'people') {
+      return null;
+    }
+    const saved = localStorage.getItem('activeRoomId');
+    return saved ? parseInt(saved, 10) : null;
+  });
+  
+  // activeRoomId와 activeTab 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (activeRoomId !== null) {
+      localStorage.setItem('activeRoomId', activeRoomId.toString());
+    } else {
+      localStorage.removeItem('activeRoomId');
+    }
+  }, [activeRoomId]);
+  
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+    // 친구 탭으로 변경할 때는 대화창 닫기
+    if (activeTab === 'people' && activeRoomId !== null) {
+      setActiveRoomId(null);
+    }
+  }, [activeTab, activeRoomId]);
+  
+  // activeRoomId가 더 이상 존재하지 않는 방이면 null로 설정
+  useEffect(() => {
+    if (activeRoomId !== null && !rooms.find(r => r.id === activeRoomId)) {
+      setActiveRoomId(null);
+    }
+  }, [activeRoomId, rooms]);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -300,6 +339,7 @@ function App() {
 
   return (
     <div className="bg-gray-100 h-screen overflow-hidden">
+      <UpdateNotification />
       <div className="flex h-full max-w-7xl mx-auto bg-white shadow-none md:shadow-2xl md:my-4 md:rounded-[30px] md:h-[calc(100vh-2rem)] overflow-hidden relative">
         {/* Navigation Rail (PC) */}
         <NavigationRail

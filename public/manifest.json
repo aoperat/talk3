@@ -1,0 +1,25 @@
+{
+  "name": "Mobile First Messenger",
+  "short_name": "Messenger",
+  "description": "언어 장벽 없이 대화하는 메신저",
+  "start_url": "/talk3/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/talk3/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/talk3/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+
