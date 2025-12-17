@@ -490,22 +490,36 @@ export function useMessages(roomId: number | null) {
 
           // 각 사용자를 참여자로 추가 (이미 있으면 무시됨)
           for (const userId of userIds) {
-            try {
-              await (supabase as any).rpc('add_room_participant', {
-                p_room_id: roomId,
-                p_user_id: userId, // userIds는 Set<string>이므로 이미 string 타입
+            const { error: rpcError } = await (supabase as any).rpc('add_room_participant', {
+              p_room_id: roomId,
+              p_user_id: userId, // userIds는 Set<string>이므로 이미 string 타입
+            });
+            
+            if (rpcError) {
+              console.error('❌ [RPC] Error adding participant:', rpcError);
+              console.error('❌ [RPC] Error details:', {
+                code: rpcError.code,
+                message: rpcError.message,
+                details: rpcError.details,
+                hint: rpcError.hint,
+                roomId,
+                userId
               });
-            } catch (err) {
+              
               // RPC 함수가 없으면 직접 삽입 시도
-              if (err && typeof err === 'object' && 'code' in err && err.code === 'PGRST202') {
-                try {
-                  await supabase
-                    .from('room_participants')
-                    .insert({ room_id: roomId, user_id: userId });
-                } catch {
-                  // 이미 존재하면 에러 무시
+              if (rpcError.code === 'PGRST202' || rpcError.code === '42883' || rpcError.code === '42809') {
+                console.log('🔄 [RPC] Fallback: 직접 삽입 시도');
+                const { error: fallbackError } = await supabase
+                  .from('room_participants')
+                  .insert({ room_id: roomId, user_id: userId });
+                if (fallbackError) {
+                  console.error('❌ [RPC] Fallback insert failed:', fallbackError);
+                } else {
+                  console.log('✅ [RPC] Fallback insert 성공');
                 }
               }
+            } else {
+              console.log('✅ [RPC] add_room_participant 성공:', userId);
             }
           }
         }

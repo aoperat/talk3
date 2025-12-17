@@ -355,22 +355,29 @@ export function useRooms() {
         });
 
       if (participantError1) {
-        console.error('Error adding self to room:', participantError1);
-        console.error('Error details:', {
+        console.error('❌ [RPC] Error adding self to room:', participantError1);
+        console.error('❌ [RPC] Error details:', {
           code: participantError1.code,
           message: participantError1.message,
           details: participantError1.details,
-          hint: participantError1.hint
+          hint: participantError1.hint,
+          roomId: room.id,
+          userId: user.id.toString()
         });
         // RPC 함수가 없으면 직접 삽입 시도
-        if (participantError1.code === 'PGRST202' || participantError1.code === '42883') {
+        if (participantError1.code === 'PGRST202' || participantError1.code === '42883' || participantError1.code === '42809') {
+          console.log('🔄 [RPC] Fallback: 직접 삽입 시도');
           const { error: fallbackError } = await supabase
             .from('room_participants')
             .insert({ room_id: room.id, user_id: user.id });
           if (fallbackError) {
-            console.error('Fallback insert failed:', fallbackError);
+            console.error('❌ [RPC] Fallback insert failed:', fallbackError);
+          } else {
+            console.log('✅ [RPC] Fallback insert 성공');
           }
         }
+      } else {
+        console.log('✅ [RPC] add_room_participant 성공 (self)');
       }
 
       // 친구도 참여자로 추가 (친구 ID가 제공된 경우)
@@ -382,15 +389,18 @@ export function useRooms() {
           });
 
         if (participantError2) {
-          console.error('Error adding friend to room:', participantError2);
-          console.error('Error details:', {
+          console.error('❌ [RPC] Error adding friend to room:', participantError2);
+          console.error('❌ [RPC] Error details:', {
             code: participantError2.code,
             message: participantError2.message,
             details: participantError2.details,
-            hint: participantError2.hint
+            hint: participantError2.hint,
+            roomId: room.id,
+            friendId: friendId.toString()
           });
           // RPC 함수가 없으면 직접 삽입 시도
-          if (participantError2.code === 'PGRST202' || participantError2.code === '42883') {
+          if (participantError2.code === 'PGRST202' || participantError2.code === '42883' || participantError2.code === '42809') {
+            console.log('🔄 [RPC] Fallback: 직접 삽입 시도');
             const { error: fallbackError } = await supabase
               .from('room_participants')
               .insert({ room_id: room.id, user_id: friendId });
