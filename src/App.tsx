@@ -5,6 +5,7 @@ import { useMessages } from './hooks/useMessages';
 import { useFriends } from './hooks/useFriends';
 import { useFriendRequests } from './hooks/useFriendRequests';
 import { useProfile } from './hooks/useProfile';
+import { useMessageNotifications } from './hooks/useMessageNotifications';
 import Auth from './components/Auth';
 import RoomList from './components/RoomList';
 import ChatView from './components/ChatView';
@@ -33,12 +34,42 @@ function App() {
     declineRequest,
   } = useFriendRequests();
   const { profile, updateProfile } = useProfile();
+  const { isSupported: isNotificationSupported, permission: notificationPermission, requestPermission: requestNotificationPermission } = useMessageNotifications();
   
   // localStorage에서 초기 상태 복원
   const [activeTab, setActiveTab] = useState<'chats' | 'people'>(() => {
     const saved = localStorage.getItem('activeTab');
     return (saved === 'chats' || saved === 'people') ? saved : 'chats';
   });
+
+  // URL 파라미터에서 room ID 확인 (알림 클릭 시)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomIdParam = urlParams.get('room');
+    if (roomIdParam) {
+      const roomId = parseInt(roomIdParam, 10);
+      if (!isNaN(roomId)) {
+        setActiveRoomId(roomId);
+        setActiveTab('chats');
+        // URL에서 파라미터 제거
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, []);
+
+  // 알림 클릭 이벤트 리스너
+  useEffect(() => {
+    const handleNavigateToRoom = (event: CustomEvent<{ roomId: number }>) => {
+      setActiveRoomId(event.detail.roomId);
+      setActiveTab('chats');
+    };
+
+    window.addEventListener('navigateToRoom', handleNavigateToRoom as EventListener);
+
+    return () => {
+      window.removeEventListener('navigateToRoom', handleNavigateToRoom as EventListener);
+    };
+  }, []);
   
   const [activeRoomId, setActiveRoomId] = useState<number | null>(() => {
     // 친구 탭이면 대화창을 열지 않음
@@ -73,6 +104,54 @@ function App() {
       setActiveRoomId(null);
     }
   }, [activeRoomId, rooms]);
+
+  // URL 파라미터에서 room ID 확인 (알림 클릭 시)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomIdParam = urlParams.get('room');
+    if (roomIdParam) {
+      const roomId = parseInt(roomIdParam, 10);
+      if (!isNaN(roomId)) {
+        setActiveRoomId(roomId);
+        setActiveTab('chats');
+        // URL에서 파라미터 제거
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, []);
+
+  // 알림 클릭 이벤트 리스너
+  useEffect(() => {
+    const handleNavigateToRoom = (event: CustomEvent<{ roomId: number }>) => {
+      setActiveRoomId(event.detail.roomId);
+      setActiveTab('chats');
+    };
+
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+        const roomId = event.data.roomId;
+        if (roomId) {
+          setActiveRoomId(roomId);
+          setActiveTab('chats');
+        }
+      }
+    };
+
+    window.addEventListener('navigateToRoom', handleNavigateToRoom as EventListener);
+    
+    // Service Worker 메시지 리스너
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+    }
+
+    return () => {
+      window.removeEventListener('navigateToRoom', handleNavigateToRoom as EventListener);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+      }
+    };
+  }, []);
+
   const [isTranslating, setIsTranslating] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -478,6 +557,40 @@ function App() {
                 </div>
               </div>
             </div>
+            
+            {/* 알림 설정 */}
+            {isNotificationSupported && (
+              <div className="pb-4 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-sm text-gray-900 mb-1">푸시 알림</h4>
+                    <p className="text-xs text-gray-500">
+                      {notificationPermission === 'granted' 
+                        ? '알림이 활성화되어 있습니다' 
+                        : notificationPermission === 'denied'
+                        ? '알림이 차단되어 있습니다'
+                        : '새 메시지를 받을 때 알림을 받습니다'}
+                    </p>
+                  </div>
+                  {notificationPermission !== 'granted' && (
+                    <button
+                      onClick={async () => {
+                        const granted = await requestNotificationPermission();
+                        if (granted) {
+                          alert('알림이 활성화되었습니다!');
+                        } else {
+                          alert('알림 권한이 필요합니다. 브라우저 설정에서 알림을 허용해주세요.');
+                        }
+                      }}
+                      className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-colors"
+                    >
+                      {notificationPermission === 'denied' ? '설정 열기' : '알림 활성화'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            
             <button
               onClick={handleLogout}
               className="w-full flex items-center justify-center space-x-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold py-3 rounded-xl transition-colors border border-red-200"

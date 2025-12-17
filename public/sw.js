@@ -92,5 +92,46 @@ self.addEventListener('message', (event) => {
         console.error('[Service Worker] Update check failed:', error);
       });
   }
+  
+  // Show notification from client
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, options } = event.data;
+    self.registration.showNotification(title, {
+      ...options,
+      icon: options.icon || '/talk3/icon-192.png',
+      badge: options.badge || '/talk3/icon-192.png',
+      requireInteraction: false,
+      silent: false,
+    });
+  }
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  const data = event.notification.data;
+  const roomId = data?.roomId;
+  const urlToOpen = roomId ? `/talk3/?room=${roomId}` : '/talk3/';
+  
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // Check if there's already a window/tab open
+      for (let client of clients) {
+        if (client.url.includes('/talk3/') && 'focus' in client) {
+          // 기존 창에 메시지 전송하여 방으로 이동
+          client.postMessage({
+            type: 'NOTIFICATION_CLICK',
+            roomId: roomId,
+          });
+          return client.focus();
+        }
+      }
+      // If not, open a new window/tab
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
+    })
+  );
 });
 
