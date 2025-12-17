@@ -116,8 +116,10 @@ export function useMessages(roomId: number | null) {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          // 필터를 제거하여 모든 메시지를 받고 클라이언트 측에서 필터링 (디버깅용)
-          // filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
+          // 필터: 디버깅을 위해 일시적으로 주석 처리 가능
+          // 필터 없이 모든 메시지를 받으면 이벤트 수신 여부를 확인할 수 있음
+          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
+          // filter 주석 처리 시: 모든 메시지를 받고 클라이언트 측에서 필터링
         },
         async (payload) => {
           console.log('🔔 [Realtime] 이벤트 핸들러 진입!');
@@ -208,8 +210,8 @@ export function useMessages(roomId: number | null) {
           event: 'UPDATE',
           schema: 'public',
           table: 'messages',
-          // 필터를 제거하여 모든 메시지 업데이트를 받고 클라이언트 측에서 필터링
-          // filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링
+          // 필터 활성화: 서버 측에서 필터링하여 효율성 향상
+          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
         },
         (payload) => {
           const updatedMessage = payload.new as Message;
