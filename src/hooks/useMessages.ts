@@ -107,6 +107,7 @@ export function useMessages(roomId: number | null) {
     console.log('🔌 [Realtime] 채널 생성:', channelName, 'roomId:', currentRoomId);
     
     // Realtime 구독 설정
+    // 채널 설정을 단순화하여 테스트 (broadcast 설정 제거)
     const channel = supabase
       .channel(channelName)
       .on(
@@ -115,11 +116,15 @@ export function useMessages(roomId: number | null) {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
+          // 필터를 제거하여 모든 메시지를 받고 클라이언트 측에서 필터링 (디버깅용)
+          // filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
         },
         async (payload) => {
+          console.log('🔔 [Realtime] 이벤트 핸들러 진입!');
           console.log('📨 [Realtime] 메시지 이벤트 수신 (원본):', JSON.stringify(payload, null, 2));
           console.log('📨 [Realtime] 메시지 이벤트 수신:', payload);
+          console.log('📨 [Realtime] payload 타입:', typeof payload);
+          console.log('📨 [Realtime] payload.new 존재:', !!payload.new);
           const newMessage = payload.new as Message;
           
           // payload 구조 확인
@@ -128,7 +133,7 @@ export function useMessages(roomId: number | null) {
             return;
           }
           
-          // 현재 방의 메시지인지 확인 (필터가 있지만 이중 체크)
+          // 현재 방의 메시지인지 확인 (클라이언트 측 필터링)
           if (newMessage.room_id !== currentRoomId) {
             console.log('⚠️ [Realtime] 다른 방의 메시지 무시:', {
               receivedRoomId: newMessage.room_id,
@@ -136,6 +141,12 @@ export function useMessages(roomId: number | null) {
             });
             return;
           }
+          
+          console.log('✅ [Realtime] 현재 방의 메시지 확인됨:', {
+            roomId: newMessage.room_id,
+            messageId: newMessage.id,
+            content: newMessage.content_ko
+          });
           
           console.log('📨 [Realtime] 메시지 수신 (roomId:', currentRoomId, '):', {
             id: newMessage.id,
@@ -197,10 +208,22 @@ export function useMessages(roomId: number | null) {
           event: 'UPDATE',
           schema: 'public',
           table: 'messages',
-          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링
+          // 필터를 제거하여 모든 메시지 업데이트를 받고 클라이언트 측에서 필터링
+          // filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링
         },
         (payload) => {
           const updatedMessage = payload.new as Message;
+          console.log('🔄 [Realtime] 메시지 업데이트 이벤트 수신:', updatedMessage);
+          
+          // 현재 방의 메시지인지 확인 (클라이언트 측 필터링)
+          if (updatedMessage.room_id !== currentRoomId) {
+            console.log('⚠️ [Realtime] 다른 방의 메시지 업데이트 무시:', {
+              receivedRoomId: updatedMessage.room_id,
+              currentRoomId: currentRoomId
+            });
+            return;
+          }
+          
           console.log('🔄 [Realtime] 메시지 업데이트 (roomId:', currentRoomId, '):', updatedMessage);
           setMessages((prev) => {
             // 현재 방의 메시지만 유지
@@ -234,6 +257,7 @@ export function useMessages(roomId: number | null) {
         });
         
         if (status === 'SUBSCRIBED') {
+          isRealtimeConnected = true; // Realtime 연결 상태 표시
           console.log('✅ [Realtime] 메시지 구독 성공! (roomId:', currentRoomId, ')');
           console.log('🔍 [Realtime] 채널 정보:', {
             channel: channelName,
@@ -242,17 +266,26 @@ export function useMessages(roomId: number | null) {
             subscribed: true,
             isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
           });
+          
+          // 채널 상태 확인
+          console.log('🔍 [Realtime] 채널 상태 확인:', {
+            channelName,
+            isSubscribed: channel.state === 'joined',
+            channelState: channel.state,
+            topic: channel.topic
+          });
+          
           // Realtime이 연결되면 폴링 비활성화
           if (pollInterval) {
             clearInterval(pollInterval);
             pollInterval = null;
             console.log('✅ [Messages] Realtime 연결됨 - 폴링 비활성화');
           }
-          // 연결 체크 타임아웃도 취소 (구독 성공했으므로)
+          // 연결 체크 타임아웃도 즉시 취소 (구독 성공했으므로)
           clearTimeout(connectionCheckTimeout);
-          // 연결 체크 타임아웃도 클리어
-          clearTimeout(connectionCheckTimeout);
+          console.log('✅ [Realtime] 연결 체크 타임아웃 취소됨');
         } else if (status === 'CHANNEL_ERROR') {
+          isRealtimeConnected = false; // Realtime 연결 실패
           console.error('❌ [Realtime] 구독 오류!', err);
           console.error('❌ [Realtime] 오류 상세:', {
             error: err,
@@ -264,6 +297,7 @@ export function useMessages(roomId: number | null) {
           // 에러 발생 시 폴링 시작
           startPollingIfNeeded();
         } else if (status === 'TIMED_OUT') {
+          isRealtimeConnected = false; // Realtime 연결 타임아웃
           console.error('⏱️ [Realtime] 구독 타임아웃!');
           console.error('⏱️ [Realtime] 타임아웃 상세:', {
             channel: channelName,
@@ -277,6 +311,7 @@ export function useMessages(roomId: number | null) {
           // 실제 에러인지 확인 필요
           const isCleanup = !pollInterval; // pollInterval이 없으면 cleanup일 가능성
           if (!isCleanup) {
+            isRealtimeConnected = false; // Realtime 연결 종료
             console.warn('🔴 [Realtime] 구독 닫힘 (예상치 못한 종료)');
             console.warn('🔴 [Realtime] 구독 닫힘 상세:', {
               channel: channelName,
@@ -308,18 +343,29 @@ export function useMessages(roomId: number | null) {
     // 입력 중이 아닐 때만 실행, 변경된 메시지만 가져옴
     let pollInterval: NodeJS.Timeout | null = null;
     let lastMessageTimestamp: string | null = null;
+    let isRealtimeConnected = false; // Realtime 연결 상태 추적
     
     // 모바일 환경 감지 (한 번만 선언)
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
     const startPollingIfNeeded = () => {
+      // Realtime이 연결되어 있으면 Polling 시작하지 않음
+      if (isRealtimeConnected) {
+        console.log('✅ [Polling] Realtime 연결됨 - Polling 시작 안 함');
+        return;
+      }
+      
       // 이미 폴링 중이면 스킵
-      if (pollInterval) return;
+      if (pollInterval) {
+        console.log('⚠️ [Polling] 이미 폴링 중 - 스킵');
+        return;
+      }
       
       // 입력 필드에 포커스가 있으면 폴링 시작 안 함
       const activeElement = document.activeElement;
       if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
         // 입력 중이면 나중에 다시 시도 (모바일: 3초, 데스크톱: 5초)
+        console.log('⌨️ [Polling] 입력 중 - 나중에 다시 시도');
         setTimeout(startPollingIfNeeded, isMobile ? 3000 : 5000);
         return;
       }
@@ -438,15 +484,18 @@ export function useMessages(roomId: number | null) {
     // 모바일에서는 더 빠르게 폴링으로 전환 (5초)
     // isMobile은 위에서 이미 선언됨
     const connectionCheckTimeout = setTimeout(() => {
-      // Realtime이 연결되지 않았으면 폴링 시작
-      if (!pollInterval) {
+      // Realtime이 연결되지 않았고 폴링도 시작되지 않았으면 폴링 시작
+      if (!isRealtimeConnected && !pollInterval) {
         console.log(isMobile ? '📱 [Realtime] 모바일 환경 - 폴링으로 전환' : '🔄 [Realtime] 연결 실패 - 폴링으로 전환');
         startPollingIfNeeded();
+      } else if (isRealtimeConnected) {
+        console.log('✅ [Realtime] 연결 확인됨 - Polling 시작 안 함');
       }
     }, isMobile ? 5000 : 10000); // 모바일: 5초, 데스크톱: 10초
 
     return () => {
       console.log('🧹 [Realtime] 메시지 채널 정리:', channelName, 'roomId:', currentRoomId);
+      isRealtimeConnected = false; // cleanup 시 연결 상태 초기화
       if (pollInterval) {
         clearInterval(pollInterval);
         pollInterval = null;
