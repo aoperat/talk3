@@ -239,7 +239,8 @@ export function useMessages(roomId: number | null) {
             channel: channelName,
             roomId: currentRoomId,
             filter: `room_id=eq.${currentRoomId}`,
-            subscribed: true
+            subscribed: true,
+            isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
           });
           // Realtime이 연결되면 폴링 비활성화
           if (pollInterval) {
@@ -247,6 +248,8 @@ export function useMessages(roomId: number | null) {
             pollInterval = null;
             console.log('✅ [Messages] Realtime 연결됨 - 폴링 비활성화');
           }
+          // 연결 체크 타임아웃도 클리어
+          clearTimeout(connectionCheckTimeout);
         } else if (status === 'CHANNEL_ERROR') {
           console.error('❌ [Realtime] 구독 오류!', err);
           console.error('❌ [Realtime] 오류 상세:', {
@@ -272,15 +275,26 @@ export function useMessages(roomId: number | null) {
           // 실제 에러인지 확인 필요
           const isCleanup = !pollInterval; // pollInterval이 없으면 cleanup일 가능성
           if (!isCleanup) {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             console.warn('🔴 [Realtime] 구독 닫힘 (예상치 못한 종료)');
             console.warn('🔴 [Realtime] 구독 닫힘 상세:', {
               channel: channelName,
               roomId: currentRoomId,
               timestamp: new Date().toISOString(),
-              error: err
+              error: err,
+              isMobile
             });
-            // 연결 종료 시 폴링 시작
-            startPollingIfNeeded();
+            // 모바일에서는 더 빠르게 폴링으로 전환
+            if (isMobile) {
+              console.log('📱 [Realtime] 모바일 환경 감지 - 폴링으로 즉시 전환');
+              // 모바일에서는 즉시 폴링 시작
+              setTimeout(() => {
+                startPollingIfNeeded();
+              }, 1000);
+            } else {
+              // 연결 종료 시 폴링 시작
+              startPollingIfNeeded();
+            }
           } else {
             console.log('🔴 [Realtime] 구독 닫힘 (정상 cleanup)');
           }
@@ -294,6 +308,9 @@ export function useMessages(roomId: number | null) {
     let pollInterval: NodeJS.Timeout | null = null;
     let lastMessageTimestamp: string | null = null;
     
+    // 모바일 환경 감지
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
     const startPollingIfNeeded = () => {
       // 이미 폴링 중이면 스킵
       if (pollInterval) return;
@@ -301,8 +318,8 @@ export function useMessages(roomId: number | null) {
       // 입력 필드에 포커스가 있으면 폴링 시작 안 함
       const activeElement = document.activeElement;
       if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
-        // 입력 중이면 나중에 다시 시도 (5초 후)
-        setTimeout(startPollingIfNeeded, 5000);
+        // 입력 중이면 나중에 다시 시도 (모바일: 3초, 데스크톱: 5초)
+        setTimeout(startPollingIfNeeded, isMobile ? 3000 : 5000);
         return;
       }
       
@@ -411,18 +428,21 @@ export function useMessages(roomId: number | null) {
             return filteredPrev;
           });
         }
-      }, 30000); // 30초마다 폴링 (Realtime이 작동하지 않을 때만)
+      }, isMobile ? 15000 : 30000); // 모바일: 15초, 데스크톱: 30초 (Realtime이 작동하지 않을 때만)
       
       console.log('🔄 [Messages] 폴링 시작 (Realtime 연결 실패)');
     };
     
-    // Realtime 연결 실패 감지를 위한 타임아웃 (10초 후)
+    // Realtime 연결 실패 감지를 위한 타임아웃
+    // 모바일에서는 더 빠르게 폴링으로 전환 (5초)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const connectionCheckTimeout = setTimeout(() => {
       // Realtime이 연결되지 않았으면 폴링 시작
       if (!pollInterval) {
+        console.log(isMobile ? '📱 [Realtime] 모바일 환경 - 폴링으로 전환' : '🔄 [Realtime] 연결 실패 - 폴링으로 전환');
         startPollingIfNeeded();
       }
-    }, 10000);
+    }, isMobile ? 5000 : 10000); // 모바일: 5초, 데스크톱: 10초
 
     return () => {
       console.log('🧹 [Realtime] 메시지 채널 정리:', channelName, 'roomId:', currentRoomId);

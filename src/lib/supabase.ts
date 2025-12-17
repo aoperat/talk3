@@ -17,6 +17,9 @@ export const supabase: SupabaseClient<Database> = isSupabaseConfigured
           eventsPerSecond: 10,
         },
         log_level: 'info' as any, // debug에서 info로 변경 (너무 많은 로그 방지)
+        // 모바일 환경에서 연결 안정성 향상
+        heartbeatIntervalMs: 30000, // 30초마다 heartbeat
+        reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 30000), // 재연결 시도 간격
       },
     })
   : (null as unknown as SupabaseClient<Database>);
