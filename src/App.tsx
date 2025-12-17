@@ -31,7 +31,7 @@ function App() {
     acceptRequest,
     declineRequest,
   } = useFriendRequests();
-  const { profile, loading: profileLoading, updateProfile } = useProfile();
+  const { profile, updateProfile } = useProfile();
   const [activeRoomId, setActiveRoomId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'chats' | 'people'>('chats');
   const [isTranslating, setIsTranslating] = useState(false);

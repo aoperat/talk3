@@ -42,7 +42,10 @@ export function useMessages(roomId: number | null) {
           .in('id', senderIds);
         
         if (profiles) {
-          profileMap = new Map(profiles.map((p) => [p.id, p]));
+          profileMap = new Map(profiles.map((p) => [p.id, { 
+            name: p.name ?? undefined, 
+            email: p.email ?? undefined 
+          }]));
         }
       }
       
@@ -225,7 +228,10 @@ export function useMessages(roomId: number | null) {
             .in('id', senderIds);
           
           if (profiles) {
-            profileMap = new Map(profiles.map((p) => [p.id, p]));
+            profileMap = new Map(profiles.map((p) => [p.id, { 
+              name: p.name ?? undefined, 
+              email: p.email ?? undefined 
+            }]));
           }
         }
         
@@ -240,9 +246,9 @@ export function useMessages(roomId: number | null) {
               const senderProfile = msg.user_id ? profileMap.get(msg.user_id) : null;
               const senderName = senderProfile?.name || senderProfile?.email?.split('@')[0] || 'User';
               
-              return {
+              const formattedMessage: MessageWithSender = {
                 ...msg,
-                sender: msg.user_id === user?.id ? 'me' : 'friend',
+                sender: (msg.user_id === user?.id ? 'me' : 'friend') as 'me' | 'friend',
                 text: msg.content_ko || '',
                 textEn: msg.content_en,
                 time: new Date(msg.created_at).toLocaleTimeString('ko-KR', {
@@ -252,6 +258,7 @@ export function useMessages(roomId: number | null) {
                 senderName: msg.user_id === user?.id ? undefined : senderName,
                 senderId: msg.user_id || undefined,
               };
+              return formattedMessage;
             });
           
           if (newMessages.length > 0) {
@@ -310,11 +317,13 @@ export function useMessages(roomId: number | null) {
             } catch (err) {
               // RPC 함수가 없으면 직접 삽입 시도
               if (err && typeof err === 'object' && 'code' in err && err.code === 'PGRST202') {
-                await supabase
-                  .from('room_participants')
-                  .insert({ room_id: roomId, user_id: userId })
-                  .then(() => {})
-                  .catch(() => {}); // 이미 존재하면 에러 무시
+                try {
+                  await supabase
+                    .from('room_participants')
+                    .insert({ room_id: roomId, user_id: userId });
+                } catch {
+                  // 이미 존재하면 에러 무시
+                }
               }
             }
           }

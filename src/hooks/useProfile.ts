@@ -51,6 +51,8 @@ export function useProfile() {
         const profileData: User = {
           ...data,
           name: data.name || user.email?.split('@')[0] || 'User',
+          email: data.email ?? undefined,
+          avatar_url: data.avatar_url ?? undefined,
         };
         setProfile(profileData);
       }
