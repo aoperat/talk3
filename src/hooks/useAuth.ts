@@ -40,7 +40,7 @@ export function useAuth() {
     return { data, error };
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, name?: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -60,7 +60,7 @@ export function useAuth() {
         await supabase.from('profiles').insert({
           id: data.user.id,
           email: email,
-          name: email.split('@')[0],
+          name: name || email.split('@')[0],
         });
       }
     }

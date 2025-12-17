@@ -23,7 +23,7 @@ function App() {
   
   console.log('👤 사용자 상태:', { user: user?.id, authLoading });
   console.log('🏠 방 목록 상태:', { roomsCount: rooms.length, roomsLoading });
-  const { friends, loading: friendsLoading } = useFriends();
+  const { friends, loading: friendsLoading, refreshFriends } = useFriends();
   const {
     requests: friendRequests,
     loading: requestsLoading,
@@ -208,6 +208,8 @@ function App() {
     if (error) {
       throw error;
     }
+    // 친구 요청 수락 후 친구 목록 새로고침
+    await refreshFriends();
   };
 
   const handleDeclineRequest = async (requestId: string) => {

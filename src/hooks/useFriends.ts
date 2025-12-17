@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Friend, User } from '../lib/types';
 import { useAuth } from './useAuth';
@@ -8,13 +8,11 @@ export function useFriends() {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
-  useEffect(() => {
+  const loadFriends = useCallback(async () => {
     if (!isSupabaseConfigured || !user) {
       setLoading(false);
       return;
     }
-
-    const loadFriends = async () => {
       setLoading(true);
       try {
         // 내가 친구로 추가한 사람들
@@ -89,32 +87,46 @@ export function useFriends() {
 
         if (myFriends) {
           myFriends.forEach((f) => {
-            const profile = profileMap.get(f.friend_id);
-            if (profile) {
-              allFriends.push({
-                id: f.id,
-                user_id: user.id,
-                friend_id: f.friend_id,
-                friend: profile as User,
-                created_at: f.created_at,
-              });
+            let profile = profileMap.get(f.friend_id);
+            // 프로필이 없으면 기본 프로필 생성
+            if (!profile) {
+              profile = {
+                id: f.friend_id,
+                email: null,
+                name: null,
+                avatar_url: null,
+              };
             }
+            allFriends.push({
+              id: f.id,
+              user_id: user.id,
+              friend_id: f.friend_id,
+              friend: profile as User,
+              created_at: f.created_at,
+            });
           });
         }
 
         if (friendsOfMe) {
           friendsOfMe.forEach((f) => {
             if (!allFriends.find((af) => af.friend_id === f.user_id)) {
-              const profile = profileMap.get(f.user_id);
-              if (profile) {
-                allFriends.push({
-                  id: f.id,
-                  user_id: f.user_id,
-                  friend_id: user.id,
-                  friend: profile as User,
-                  created_at: f.created_at,
-                });
+              let profile = profileMap.get(f.user_id);
+              // 프로필이 없으면 기본 프로필 생성
+              if (!profile) {
+                profile = {
+                  id: f.user_id,
+                  email: null,
+                  name: null,
+                  avatar_url: null,
+                };
               }
+              allFriends.push({
+                id: f.id,
+                user_id: f.user_id,
+                friend_id: user.id,
+                friend: profile as User,
+                created_at: f.created_at,
+              });
             }
           });
         }
@@ -129,7 +141,13 @@ export function useFriends() {
         setFriends([]);
         setLoading(false);
       }
-    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !user) {
+      setLoading(false);
+      return;
+    }
 
     loadFriends();
 
@@ -163,14 +181,31 @@ export function useFriends() {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
           table: 'friend_requests',
           filter: `to_user_id=eq.${user.id}`,
         },
-        () => {
+        (payload) => {
           // 친구 요청이 수락되면 친구 목록 다시 로드
-          loadFriends();
+          if (payload.new && (payload.new as any).status === 'accepted') {
+            loadFriends();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'friend_requests',
+          filter: `from_user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          // 내가 보낸 친구 요청이 수락되면 친구 목록 다시 로드
+          if (payload.new && (payload.new as any).status === 'accepted') {
+            loadFriends();
+          }
         }
       )
       .subscribe();
@@ -178,7 +213,7 @@ export function useFriends() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, loadFriends]);
 
   const addFriend = async (friendEmail: string) => {
     if (!user) return { error: new Error('Not authenticated') };
@@ -238,6 +273,10 @@ export function useFriends() {
     }
   };
 
-  return { friends, loading, addFriend };
+  const refreshFriends = useCallback(async () => {
+    await loadFriends();
+  }, [loadFriends]);
+
+  return { friends, loading, addFriend, refreshFriends };
 }
 

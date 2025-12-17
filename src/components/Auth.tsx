@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { MessageCircleHeart, Mail, Lock } from 'lucide-react';
+import { MessageCircleHeart, Mail, Lock, User } from 'lucide-react';
 
 export default function Auth() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { signIn, signUp } = useAuth();
@@ -13,6 +14,9 @@ export default function Auth() {
   useEffect(() => {
     // Reset form when switching between login/signup
     setError(null);
+    if (!isSignUp) {
+      setName('');
+    }
   }, [isSignUp]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,7 +26,7 @@ export default function Auth() {
 
     try {
       const { error } = isSignUp
-        ? await signUp(email, password)
+        ? await signUp(email, password, name)
         : await signIn(email, password);
 
       if (error) {
@@ -69,6 +73,27 @@ export default function Auth() {
               />
             </div>
           </div>
+
+          {isSignUp && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1 ml-1">
+                사용자 이름
+              </label>
+              <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all">
+                <User className="w-5 h-5 text-gray-400 mr-3 flex-shrink-0" />
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={20}
+                  className="bg-transparent flex-1 outline-none text-gray-900 text-sm"
+                  placeholder="사용자 이름을 입력하세요"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-gray-500 mb-1 ml-1">
