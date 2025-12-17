@@ -1,0 +1,363 @@
+import { useState, useEffect, useCallback } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { Room, RoomWithMetadata } from '../lib/types';
+import { useAuth } from './useAuth';
+
+export function useRooms() {
+  const [rooms, setRooms] = useState<RoomWithMetadata[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  const loadRooms = useCallback(async () => {
+    if (!isSupabaseConfigured || !user) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 현재 사용자가 참여한 방만 조회
+      const { data: participantData, error: participantError } = await supabase
+        .from('room_participants')
+        .select('room_id')
+        .eq('user_id', user.id);
+
+      if (participantError) {
+        // 테이블이 없을 경우 빈 배열 반환
+        if (participantError.code === 'PGRST205') {
+          console.warn('room_participants table not found. Please run the SQL schema.');
+          setRooms([]);
+          setLoading(false);
+          return;
+        }
+        console.error('Error loading room participants:', participantError);
+        setRooms([]);
+        setLoading(false);
+        return;
+      }
+
+      const roomIds = participantData?.map((p) => p.room_id) || [];
+
+      if (roomIds.length === 0) {
+        setRooms([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .in('id', roomIds)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading rooms:', error);
+        setRooms([]);
+        setLoading(false);
+        return;
+      }
+
+      if (data) {
+        // 각 방의 참여자와 마지막 메시지 가져오기
+        const roomsWithMetadata = await Promise.all(
+          data.map(async (room: Room) => {
+            // 방의 참여자 가져오기
+            const { data: participants } = await supabase
+              .from('room_participants')
+              .select('user_id')
+              .eq('room_id', room.id);
+            
+            const participantIds = participants?.map((p) => p.user_id) || [];
+
+            const { data: lastMessages } = await supabase
+              .from('messages')
+              .select('content_ko, created_at')
+              .eq('room_id', room.id)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            
+            const lastMessage = lastMessages && lastMessages.length > 0 ? lastMessages[0] : null;
+
+            const now = new Date();
+            const messageTime = lastMessage?.created_at
+              ? new Date(lastMessage.created_at)
+              : null;
+            let timeStr = '';
+
+            if (messageTime) {
+              const diffMs = now.getTime() - messageTime.getTime();
+              const diffMins = Math.floor(diffMs / 60000);
+              const diffHours = Math.floor(diffMs / 3600000);
+              const diffDays = Math.floor(diffMs / 86400000);
+
+              if (diffMins < 1) {
+                timeStr = '방금';
+              } else if (diffMins < 60) {
+                timeStr = `${diffMins}분 전`;
+              } else if (diffHours < 24) {
+                timeStr = `${diffHours}시간 전`;
+              } else if (diffDays === 1) {
+                timeStr = '어제';
+              } else if (diffDays < 7) {
+                timeStr = `${diffDays}일 전`;
+              } else {
+                timeStr = messageTime.toLocaleDateString('ko-KR', {
+                  month: 'short',
+                  day: 'numeric',
+                });
+              }
+            }
+
+            return {
+              ...room,
+              lastMsg: lastMessage?.content_ko || undefined,
+              time: timeStr || undefined,
+              unread: 0, // TODO: 읽지 않은 메시지 수 계산
+              participantIds,
+            } as RoomWithMetadata;
+          })
+        );
+
+        setRooms(roomsWithMetadata);
+      }
+      setLoading(false);
+    } catch (err) {
+      console.error('Unexpected error loading rooms:', err);
+      setRooms([]);
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    console.log('🔍 useRooms useEffect 실행:', { isSupabaseConfigured, userId: user?.id });
+    
+    if (!isSupabaseConfigured || !user) {
+      console.log('⚠️ 방 목록 Realtime 구독 스킵: isSupabaseConfigured=', isSupabaseConfigured, 'user=', user?.id);
+      return;
+    }
+
+    console.log('🚀 방 목록 Realtime 구독 시작');
+    loadRooms();
+
+    // Realtime 구독: 새 메시지가 오면 방 목록 업데이트
+    console.log('🔌 방 목록 Realtime 채널 생성 시작...');
+    
+    if (!supabase) {
+      console.error('❌ Supabase 클라이언트가 null입니다!');
+      return;
+    }
+
+    const channelName = `rooms_updates_${user.id}_${Date.now()}`;
+    console.log('📺 방 목록 채널 이름:', channelName);
+    
+    const channel = supabase
+      .channel(channelName, {
+        config: {
+          broadcast: { self: true },
+        },
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          console.log('📨 [Realtime] 방 목록 - 새 메시지 이벤트 수신:', payload);
+          // 새 메시지가 추가되면 해당 방만 업데이트하고 최상단으로 이동
+          const newMessage = payload.new as { room_id: number; content_ko: string; created_at: string; user_id: string };
+          setRooms((prevRooms) => {
+            const roomExists = prevRooms.some((room) => room.id === newMessage.room_id);
+            if (!roomExists) {
+              // 방이 목록에 없으면 전체 다시 로드
+          setTimeout(() => loadRooms(), 100);
+              return prevRooms;
+            }
+            // 방 목록을 업데이트하고 최신 메시지가 있는 방을 맨 위로 이동
+            const updatedRooms = prevRooms.map((room) => {
+              if (room.id === newMessage.room_id) {
+                return {
+                  ...room,
+                  lastMsg: newMessage.content_ko || undefined,
+                  time: '방금',
+                };
+              }
+              return room;
+            });
+            // 최신 메시지가 있는 방을 맨 위로 이동
+            return updatedRooms.sort((a, b) => {
+              if (a.id === newMessage.room_id) return -1;
+              if (b.id === newMessage.room_id) return 1;
+              return 0;
+            });
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'rooms',
+        },
+        () => {
+          // 새 방 생성 시 목록 다시 로드
+          loadRooms();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'room_participants',
+        },
+        (payload) => {
+          // 새 참여자 추가 시 (나간 사용자가 다시 들어온 경우)
+          const newParticipant = payload.new as { room_id: number; user_id: string };
+          if (newParticipant.user_id === user.id) {
+            // 내가 다시 참여한 경우만 목록 업데이트
+            loadRooms();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'room_participants',
+        },
+        (payload) => {
+          // 참여자가 나간 경우
+          const deletedParticipant = payload.old as { room_id: number; user_id: string };
+          if (deletedParticipant.user_id === user.id) {
+            // 내가 나간 경우 목록에서 제거
+            setRooms((prevRooms) => prevRooms.filter((room) => room.id !== deletedParticipant.room_id));
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        console.log('📡 [Realtime] 방 목록 채널 구독 상태:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [Realtime] 방 목록 구독 성공!');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ [Realtime] 방 목록 구독 오류!', err);
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏱️ [Realtime] 방 목록 구독 타임아웃!');
+        } else if (status === 'CLOSED') {
+          console.warn('🔴 [Realtime] 방 목록 구독 닫힘');
+        } else {
+          console.warn('⚠️ [Realtime] 방 목록 알 수 없는 상태:', status);
+        }
+      });
+    
+    console.log('🔌 방 목록 Realtime 채널 구독 요청 완료');
+
+    // Realtime이 작동하지 않을 경우를 대비한 polling 폴백
+    const pollInterval = setInterval(() => {
+      loadRooms();
+    }, 3000); // 3초마다 방 목록 업데이트
+
+    return () => {
+      clearInterval(pollInterval);
+      supabase.removeChannel(channel);
+    };
+  }, [loadRooms, user, isSupabaseConfigured]);
+
+  const createRoom = async (name: string, friendId?: string, type: 'private' | 'topic' = 'topic') => {
+    if (!isSupabaseConfigured || !user || !name.trim()) {
+      return { error: new Error('Room name is required') };
+    }
+
+    try {
+      // 방 생성
+      const { data: room, error: roomError } = await supabase
+        .from('rooms')
+        .insert({ 
+          name: name.trim(),
+          type: type,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (roomError || !room) {
+        return { error: roomError || new Error('Failed to create room') };
+      }
+
+      // 현재 사용자를 참여자로 추가 (RPC 함수 사용)
+      const { error: participantError1 } = await (supabase as any)
+        .rpc('add_room_participant', { p_room_id: room.id, p_user_id: user.id });
+
+      if (participantError1) {
+        console.error('Error adding self to room:', participantError1);
+        // RPC 함수가 없으면 직접 삽입 시도
+        if (participantError1.code === 'PGRST202') {
+          const { error: fallbackError } = await supabase
+            .from('room_participants')
+            .insert({ room_id: room.id, user_id: user.id });
+          if (fallbackError) {
+            console.error('Fallback insert failed:', fallbackError);
+          }
+        }
+      }
+
+      // 친구도 참여자로 추가 (친구 ID가 제공된 경우)
+      if (friendId) {
+        const { error: participantError2 } = await (supabase as any)
+          .rpc('add_room_participant', { p_room_id: room.id, p_user_id: friendId });
+
+        if (participantError2) {
+          console.error('Error adding friend to room:', participantError2);
+          // RPC 함수가 없으면 직접 삽입 시도
+          if (participantError2.code === 'PGRST202') {
+            const { error: fallbackError } = await supabase
+              .from('room_participants')
+              .insert({ room_id: room.id, user_id: friendId });
+            if (fallbackError) {
+              console.error('Fallback insert for friend failed:', fallbackError);
+            }
+          }
+        }
+      }
+
+      // 방 목록 다시 로드
+      await loadRooms();
+
+      return { data: room, error: null };
+    } catch (err) {
+      return { error: err instanceof Error ? err : new Error('Unexpected error') };
+    }
+  };
+
+  const leaveRoom = async (roomId: number) => {
+    if (!isSupabaseConfigured || !user) {
+      return { error: new Error('User not authenticated') };
+    }
+
+    try {
+      // room_participants에서 현재 사용자 삭제 (방 나가기)
+      const { error } = await supabase
+        .from('room_participants')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error leaving room:', error);
+        return { error };
+      }
+
+      // 방 목록 다시 로드
+      await loadRooms();
+
+      return { error: null };
+    } catch (err) {
+      return { error: err instanceof Error ? err : new Error('Unexpected error') };
+    }
+  };
+
+  return { rooms, loading, createRoom, leaveRoom };
+}

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile First Messenger</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; touch-action: manipulation; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        
+        /* 모바일 슬라이드 효과 */
+        .slide-in-right { animation: slideInRight 0.3s ease-out forwards; }
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+    <div id="root" class="h-full"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Mock Data ---
+        const MOCK_ROOMS = [
+            { id: 1, name: "✈️ 일본 여행 계획", lastMsg: "비행기표 예매했어?", time: "10:30", unread: 2 },
+            { id: 2, name: "💻 코딩 공부방", lastMsg: "Supabase 설정 끝남", time: "어제", unread: 0 },
+            { id: 3, name: "🍔 저녁 메뉴 추천", lastMsg: "햄버거 먹자", time: "어제", unread: 0 },
+            { id: 4, name: "🎬 영화 번개", lastMsg: "이번주 주말 콜?", time: "2일 전", unread: 0 },
+        ];
+
+        const MOCK_MESSAGES = {
+            1: [
+                { id: 1, text: "이번 주말에 도쿄 가는 거 확정이야?", textEn: "Is the trip to Tokyo confirmed for this weekend?", sender: 'me', time: "10:00" },
+                { id: 2, text: "응, 비행기표 아까 예매했어.", textEn: null, sender: 'friend', time: "10:05" },
+                { id: 3, text: "오 빠르네! 숙소는 어디로 할까?", textEn: null, sender: 'me', time: "10:06" },
+            ],
+            2: [],
+            3: [],
+            4: []
+        };
+
+        const App = () => {
+            const [rooms, setRooms] = useState(MOCK_ROOMS);
+            const [activeRoomId, setActiveRoomId] = useState(null); // 초기값 null (목록 보기)
+            const [messages, setMessages] = useState(MOCK_MESSAGES);
+            const [inputText, setInputText] = useState("");
+            const [isTranslating, setIsTranslating] = useState(false);
+            const messagesEndRef = useRef(null);
+
+            const currentMessages = activeRoomId ? (messages[activeRoomId] || []) : [];
+            const activeRoom = rooms.find(r => r.id === activeRoomId);
+
+            useEffect(() => { lucide.createIcons(); }, [activeRoomId, messages, isTranslating]);
+            
+            useEffect(() => { 
+                if (activeRoomId) messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, [currentMessages, activeRoomId]);
+
+            const handleSend = () => {
+                if (!inputText.trim()) return;
+                const newMsg = {
+                    id: Date.now(),
+                    text: inputText,
+                    textEn: null,
+                    sender: 'me',
+                    time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+                };
+                setMessages(prev => ({
+                    ...prev,
+                    [activeRoomId]: [...(prev[activeRoomId] || []), newMsg]
+                }));
+                setInputText("");
+            };
+
+            const handleTranslateRoom = () => {
+                setIsTranslating(true);
+                setTimeout(() => {
+                    setMessages(prev => {
+                        const roomMsgs = prev[activeRoomId].map(msg => ({
+                            ...msg,
+                            textEn: msg.textEn || `(Translated) ${msg.text}`
+                        }));
+                        return { ...prev, [activeRoomId]: roomMsgs };
+                    });
+                    setIsTranslating(false);
+                }, 1500);
+            };
+
+            return (
+                <div className="flex h-full max-w-7xl mx-auto bg-white shadow-none md:shadow-2xl md:my-4 md:rounded-[30px] md:h-[calc(100vh-2rem)] overflow-hidden relative">
+                    
+                    {/* --- 1. 대화방 목록 (Sidebar / List View) --- */}
+                    {/* 모바일: activeRoomId가 없을 때만 보임 / 데스크톱: 항상 보임 */}
+                    <aside className={`w-full md:w-[380px] bg-white flex flex-col border-r border-gray-100 absolute md:relative z-10 h-full transition-transform duration-300
+                        ${activeRoomId ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
+                    `}>
+                        {/* 목록 헤더 */}
+                        <div className="px-5 py-4 flex items-center justify-between bg-white sticky top-0 z-20">
+                            <h1 className="font-bold text-2xl text-gray-900">Chats</h1>
+                            <div className="flex space-x-2">
+                                <button className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
+                                    <i data-lucide="search" className="w-5 h-5 text-gray-600"></i>
+                                </button>
+                                <button className="p-2 bg-black text-white rounded-full hover:bg-gray-800 transition shadow-lg shadow-gray-200">
+                                    <i data-lucide="plus" className="w-5 h-5"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 목록 리스트 */}
+                        <div className="flex-1 overflow-y-auto px-2">
+                            {rooms.map(room => (
+                                <div 
+                                    key={room.id}
+                                    onClick={() => setActiveRoomId(room.id)}
+                                    className={`p-4 mb-1 rounded-2xl cursor-pointer transition-all active:scale-[0.98]
+                                        ${activeRoomId === room.id ? 'bg-indigo-50 md:bg-gray-100' : 'hover:bg-gray-50 bg-white'}
+                                    `}
+                                >
+                                    <div className="flex items-center space-x-4">
+                                        <div className="relative">
+                                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-50 flex items-center justify-center text-2xl shadow-sm border border-white">
+                                                {room.name.substring(0, 1)}
+                                            </div>
+                                            {room.unread > 0 && (
+                                                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">
+                                                    {room.unread}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-baseline mb-1">
+                                                <h3 className="font-bold text-gray-900 truncate text-[15px]">{room.name}</h3>
+                                                <span className="text-[11px] text-gray-400 flex-shrink-0">{room.time}</span>
+                                            </div>
+                                            <p className="text-[13px] text-gray-500 truncate leading-snug">{room.lastMsg}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        {/* 하단 탭바 (모바일 느낌용 장식) */}
+                        <div className="border-t border-gray-100 p-2 flex justify-around items-center md:hidden bg-white pb-6">
+                            <button className="flex flex-col items-center p-2 text-indigo-600 space-y-1">
+                                <i data-lucide="message-circle" className="w-6 h-6"></i>
+                                <span className="text-[10px] font-medium">Chats</span>
+                            </button>
+                            <button className="flex flex-col items-center p-2 text-gray-400 space-y-1">
+                                <i data-lucide="users" className="w-6 h-6"></i>
+                                <span className="text-[10px] font-medium">People</span>
+                            </button>
+                            <button className="flex flex-col items-center p-2 text-gray-400 space-y-1">
+                                <i data-lucide="settings" className="w-6 h-6"></i>
+                                <span className="text-[10px] font-medium">Settings</span>
+                            </button>
+                        </div>
+                    </aside>
+
+
+                    {/* --- 2. 채팅 화면 (Main / Chat View) --- */}
+                    {/* 모바일: activeRoomId가 있을 때만 보임 (오른쪽에서 슬라이드) / 데스크톱: 항상 보임 */}
+                    <main className={`flex-1 flex flex-col bg-white absolute md:relative w-full h-full z-20 transition-transform duration-300 bg-[#F8F9FD]
+                        ${activeRoomId ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
+                    `}>
+                        {activeRoomId ? (
+                            <>
+                                {/* 채팅방 헤더 */}
+                                <header className="px-4 py-3 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between sticky top-0 z-30">
+                                    <div className="flex items-center space-x-2">
+                                        <button 
+                                            onClick={() => setActiveRoomId(null)} 
+                                            className="md:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-full"
+                                        >
+                                            <i data-lucide="chevron-left" className="w-6 h-6"></i>
+                                        </button>
+                                        <div>
+                                            <h2 className="font-bold text-base text-gray-900 flex items-center gap-2">
+                                                {activeRoom.name}
+                                                <i data-lucide="chevron-right" className="w-4 h-4 text-gray-300 md:hidden"></i>
+                                            </h2>
+                                            <span className="text-[11px] text-green-500 font-medium">● Online</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <button 
+                                        onClick={handleTranslateRoom}
+                                        disabled={isTranslating}
+                                        className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
+                                            ${isTranslating 
+                                                ? 'bg-gray-100 text-gray-400' 
+                                                : 'bg-black text-white hover:bg-gray-800'
+                                            }`}
+                                    >
+                                        <i data-lucide={isTranslating ? "loader-2" : "languages"} className={`w-3.5 h-3.5 ${isTranslating ? 'animate-spin' : ''}`}></i>
+                                        <span>{isTranslating ? "Translating..." : "Translate"}</span>
+                                    </button>
+                                </header>
+
+                                {/* 메시지 리스트 */}
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F2F4F7]">
+                                    {currentMessages.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center opacity-40">
+                                            <div className="w-20 h-20 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+                                                <i data-lucide="message-square" className="w-8 h-8 text-gray-400"></i>
+                                            </div>
+                                            <p className="text-sm text-gray-500 font-medium">Start a conversation!</p>
+                                        </div>
+                                    ) : (
+                                        currentMessages.map((msg) => (
+                                            <div key={msg.id} className={`flex flex-col ${msg.sender === 'me' ? 'items-end' : 'items-start'}`}>
+                                                <div className={`flex items-end max-w-[85%] ${msg.sender === 'me' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                                    
+                                                    {/* 말풍선 */}
+                                                    <div className={`group relative px-4 py-3 shadow-sm transition-all
+                                                        ${msg.sender === 'me' 
+                                                            ? 'bg-indigo-600 text-white rounded-[20px] rounded-tr-[4px]' 
+                                                            : 'bg-white text-gray-800 rounded-[20px] rounded-tl-[4px] border border-gray-100'}
+                                                    `}>
+                                                        <p className="text-[15px] leading-relaxed font-normal">{msg.text}</p>
+                                                        
+                                                        {msg.textEn && (
+                                                            <div className={`mt-2 pt-2 border-t text-[13px] font-serif italic leading-relaxed
+                                                                ${msg.sender === 'me' ? 'border-indigo-500/30 text-indigo-100' : 'border-gray-100 text-gray-500'}
+                                                            `}>
+                                                                {msg.textEn}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* 시간 */}
+                                                    <span className="text-[10px] text-gray-400 mb-1 mx-1.5 flex-shrink-0 font-medium">
+                                                        {msg.time}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                    <div ref={messagesEndRef} />
+                                </div>
+
+                                {/* 입력창 */}
+                                <div className="p-3 bg-white border-t border-gray-100 pb-safe-area">
+                                    <div className="flex items-center bg-gray-100 p-1.5 rounded-[24px]">
+                                        <button className="p-2 text-gray-400 hover:text-gray-600 transition rounded-full hover:bg-gray-200">
+                                            <i data-lucide="plus" className="w-5 h-5"></i>
+                                        </button>
+                                        <input
+                                            type="text"
+                                            value={inputText}
+                                            onChange={(e) => setInputText(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                            placeholder="Message..."
+                                            className="flex-1 bg-transparent border-none outline-none text-[15px] px-2 min-w-0"
+                                        />
+                                        <button 
+                                            onClick={handleSend}
+                                            disabled={!inputText.trim()}
+                                            className={`p-2 rounded-full transition-all duration-200
+                                                ${inputText.trim() 
+                                                    ? 'bg-indigo-600 text-white shadow-md transform hover:scale-105' 
+                                                    : 'bg-gray-200 text-gray-400'}
+                                            `}
+                                        >
+                                            <i data-lucide="arrow-up" className="w-5 h-5"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            /* 데스크톱용: 선택된 방 없을 때 placeholder */
+                            <div className="hidden md:flex flex-col items-center justify-center h-full text-center p-8 bg-gray-50">
+                                <div className="w-24 h-24 bg-indigo-50 rounded-[30px] flex items-center justify-center mb-6">
+                                    <i data-lucide="message-circle" className="w-10 h-10 text-indigo-600"></i>
+                                </div>
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">English Buddy Messenger</h3>
+                                <p className="text-gray-500 max-w-sm">Select a chat room from the sidebar to start talking with your friend.</p>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
