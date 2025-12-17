@@ -16,7 +16,10 @@ export default function NavigationRail({
   friendRequestCount = 0,
 }: NavigationRailProps) {
   return (
-    <nav className="hidden md:flex flex-col w-[72px] bg-[#1E1E24] h-full items-center py-6 space-y-8 z-50 flex-shrink-0">
+    <nav 
+      className="hidden md:flex flex-col w-[72px] bg-[#1E1E24] h-full items-center py-6 space-y-8 z-50 flex-shrink-0" 
+      style={{ paddingTop: 'max(1.5rem, calc(1.5rem + env(safe-area-inset-top)))' }}
+    >
       <button
         onClick={() => onTabChange('people')}
         className={`p-3 rounded-2xl transition-all relative ${

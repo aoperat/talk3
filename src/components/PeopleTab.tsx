@@ -88,7 +88,7 @@ export default function PeopleTab({
   return (
     <div className="h-full flex flex-col">
       {/* 헤더 */}
-      <div className="px-5 py-4 flex items-center justify-between bg-white sticky top-0 z-20 border-b border-gray-100">
+      <div className="px-5 py-4 flex items-center justify-between bg-white sticky top-0 z-20 border-b border-gray-100" style={{ paddingTop: 'max(1rem, calc(1rem + env(safe-area-inset-top)))' }}>
         <h1 className="font-bold text-2xl text-gray-900">Friends</h1>
         <div className="flex space-x-2">
           <button className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">

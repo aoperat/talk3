@@ -27,7 +27,7 @@ export default function RoomList({ rooms, activeRoomId, onSelectRoom, onCreateRo
       }`}
     >
       {/* 목록 헤더 */}
-      <div className="px-5 py-4 flex items-center justify-between bg-white sticky top-0 z-20">
+      <div className="px-5 py-4 flex items-center justify-between bg-white sticky top-0 z-20 pt-safe" style={{ paddingTop: 'max(1rem, calc(1rem + env(safe-area-inset-top)))' }}>
         <h1 className="font-bold text-2xl text-gray-900">Chats</h1>
         <div className="flex space-x-2">
           <button className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition">
