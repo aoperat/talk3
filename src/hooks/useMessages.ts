@@ -116,18 +116,29 @@ export function useMessages(roomId: number | null) {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          // 필터: 디버깅을 위해 일시적으로 주석 처리 가능
-          // 필터 없이 모든 메시지를 받으면 이벤트 수신 여부를 확인할 수 있음
-          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
-          // filter 주석 처리 시: 모든 메시지를 받고 클라이언트 측에서 필터링
+          // 필터 제거: 디버깅을 위해 모든 메시지를 받아서 타입 불일치 문제 확인
+          // filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링 (일시적으로 주석 처리)
         },
         async (payload) => {
+          console.log('🔥 [Realtime] 필터 없이 받은 데이터:', payload);
           console.log('🔔 [Realtime] 이벤트 핸들러 진입!');
           console.log('📨 [Realtime] 메시지 이벤트 수신 (원본):', JSON.stringify(payload, null, 2));
           console.log('📨 [Realtime] 메시지 이벤트 수신:', payload);
           console.log('📨 [Realtime] payload 타입:', typeof payload);
           console.log('📨 [Realtime] payload.new 존재:', !!payload.new);
           const newMessage = payload.new as Message;
+          
+          // room_id 타입 확인 (중요!)
+          console.log('🔍 [Realtime] room_id 타입 확인:', {
+            receivedRoomId: newMessage.room_id,
+            receivedRoomIdType: typeof newMessage.room_id,
+            currentRoomId: currentRoomId,
+            currentRoomIdType: typeof currentRoomId,
+            isMatch: newMessage.room_id === currentRoomId,
+            isMatchWithCoercion: newMessage.room_id == currentRoomId, // 느슨한 비교
+            isMatchWithString: String(newMessage.room_id) === String(currentRoomId),
+            isMatchWithNumber: Number(newMessage.room_id) === Number(currentRoomId)
+          });
           
           // payload 구조 확인
           if (!payload.new) {
@@ -210,8 +221,8 @@ export function useMessages(roomId: number | null) {
           event: 'UPDATE',
           schema: 'public',
           table: 'messages',
-          // 필터 활성화: 서버 측에서 필터링하여 효율성 향상
-          filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링으로 현재 방의 메시지만 받기
+          // 필터 제거: 디버깅을 위해 모든 메시지 업데이트를 받음
+          // filter: `room_id=eq.${currentRoomId}`, // 서버 측 필터링 (일시적으로 주석 처리)
         },
         (payload) => {
           const updatedMessage = payload.new as Message;
