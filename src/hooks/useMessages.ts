@@ -486,14 +486,14 @@ export function useMessages(roomId: number | null) {
           });
 
           // 현재 사용자도 추가
-          userIds.add(user.id);
+          userIds.add(user.id.toString());
 
           // 각 사용자를 참여자로 추가 (이미 있으면 무시됨)
           for (const userId of userIds) {
             try {
               await (supabase as any).rpc('add_room_participant', {
                 p_room_id: roomId,
-                p_user_id: typeof userId === 'string' ? userId : userId.toString(), // UUID를 text로 변환
+                p_user_id: userId, // userIds는 Set<string>이므로 이미 string 타입
               });
             } catch (err) {
               // RPC 함수가 없으면 직접 삽입 시도
