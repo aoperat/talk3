@@ -319,10 +319,8 @@ export function useRooms() {
         pollInterval = null;
       }
       clearTimeout(connectionCheckTimeout);
-      // 채널 제거 전에 잠시 대기 (React Strict Mode에서 즉시 제거되는 것 방지)
-      setTimeout(() => {
-        supabase.removeChannel(channel);
-      }, 100);
+      // 채널 제거 (즉시 제거)
+      supabase.removeChannel(channel);
     };
   }, [loadRooms, user, isSupabaseConfigured]);
 

@@ -18,8 +18,7 @@ if ('serviceWorker' in navigator) {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
+  // Strict Mode 비활성화 (Realtime 구독 문제 해결)
+  <App />
 )
 

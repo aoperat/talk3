@@ -275,7 +275,6 @@ export function useMessages(roomId: number | null) {
           // 실제 에러인지 확인 필요
           const isCleanup = !pollInterval; // pollInterval이 없으면 cleanup일 가능성
           if (!isCleanup) {
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             console.warn('🔴 [Realtime] 구독 닫힘 (예상치 못한 종료)');
             console.warn('🔴 [Realtime] 구독 닫힘 상세:', {
               channel: channelName,
@@ -308,7 +307,7 @@ export function useMessages(roomId: number | null) {
     let pollInterval: NodeJS.Timeout | null = null;
     let lastMessageTimestamp: string | null = null;
     
-    // 모바일 환경 감지
+    // 모바일 환경 감지 (한 번만 선언)
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
     const startPollingIfNeeded = () => {
@@ -435,7 +434,7 @@ export function useMessages(roomId: number | null) {
     
     // Realtime 연결 실패 감지를 위한 타임아웃
     // 모바일에서는 더 빠르게 폴링으로 전환 (5초)
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    // isMobile은 위에서 이미 선언됨
     const connectionCheckTimeout = setTimeout(() => {
       // Realtime이 연결되지 않았으면 폴링 시작
       if (!pollInterval) {
@@ -451,10 +450,8 @@ export function useMessages(roomId: number | null) {
         pollInterval = null;
       }
       clearTimeout(connectionCheckTimeout);
-      // 채널 제거 전에 잠시 대기 (React Strict Mode에서 즉시 제거되는 것 방지)
-      setTimeout(() => {
-        supabase.removeChannel(channel);
-      }, 100);
+      // 채널 제거 (즉시 제거)
+      supabase.removeChannel(channel);
     };
   }, [roomId, user?.id]);
 
