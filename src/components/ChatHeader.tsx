@@ -16,7 +16,13 @@ export default function ChatHeader({
   onLeaveRoom,
 }: ChatHeaderProps) {
   return (
-    <header className="px-4 py-3 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between sticky top-0 z-30 pt-safe">
+    <header
+      className="px-4 py-3 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between sticky z-30"
+      style={{
+        // iOS PWA에서 상단 상태바(safe area)에 가리지 않도록
+        top: 'env(safe-area-inset-top)',
+      }}
+    >
       <div className="flex items-center space-x-2 flex-1 min-w-0">
         <button
           onClick={onBack}
