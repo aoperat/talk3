@@ -8,6 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+guide
 dist
 dist-ssr
 *.local
@@ -27,4 +28,5 @@ dist-ssr
 .env
 .env.local
 .env.production.local
+.sql
 
