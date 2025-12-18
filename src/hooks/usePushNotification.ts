@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getFcmToken } from '../lib/firebase';
 
 export function usePushNotification() {
   const [permission, setPermission] = useState<NotificationPermission>('default');
@@ -38,6 +39,7 @@ export function usePushNotification() {
       
       if (result === 'granted') {
         console.log('[PushNotification] Permission granted successfully');
+
         // iOS PWA: Service Worker가 준비되었는지 확인
         if ('serviceWorker' in navigator) {
           try {
@@ -47,6 +49,20 @@ export function usePushNotification() {
             console.error('[PushNotification] Service Worker not ready:', error);
           }
         }
+
+        // FCM 토큰 발급 (환경변수가 없으면 자동으로 skip)
+        try {
+          const token = await getFcmToken();
+          if (token) {
+            console.log('[PushNotification] FCM 토큰 발급 완료:', token);
+            // TODO: 이 토큰을 Supabase나 별도 백엔드에 저장해서 서버 푸시에 사용
+          } else {
+            console.log('[PushNotification] FCM 토큰이 없어 서버 푸시는 비활성화 상태입니다.');
+          }
+        } catch (error) {
+          console.error('[PushNotification] FCM 토큰 발급 중 오류:', error);
+        }
+
         return true;
       } else {
         console.warn('[PushNotification] Permission denied or default');
