@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Languages, Loader2, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Languages, Loader2, LogOut, Sparkles } from 'lucide-react';
 
 interface ChatHeaderProps {
   roomName: string;
@@ -6,6 +6,9 @@ interface ChatHeaderProps {
   onTranslate: () => void;
   isTranslating: boolean;
   onLeaveRoom?: () => void;
+  onGenerateStudyNote: () => void;
+  isGeneratingStudyNote: boolean;
+  canGenerateStudyNote: boolean;
 }
 
 export default function ChatHeader({
@@ -14,6 +17,9 @@ export default function ChatHeader({
   onTranslate,
   isTranslating,
   onLeaveRoom,
+  onGenerateStudyNote,
+  isGeneratingStudyNote,
+  canGenerateStudyNote,
 }: ChatHeaderProps) {
   return (
     <header
@@ -48,6 +54,27 @@ export default function ChatHeader({
             <LogOut className="w-4 h-4" />
           </button>
         )}
+        <button
+          onClick={onGenerateStudyNote}
+          disabled={
+            isGeneratingStudyNote ||
+            isTranslating ||
+            !canGenerateStudyNote
+          }
+          className={`hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm flex-shrink-0 ${
+            isGeneratingStudyNote
+              ? 'bg-gray-100 text-gray-400'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+          }`}
+          title={canGenerateStudyNote ? 'AI 학습 노트 생성' : '학습할 대화가 필요합니다'}
+        >
+          {isGeneratingStudyNote ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="w-3.5 h-3.5" />
+          )}
+          <span>{isGeneratingStudyNote ? '생성 중...' : 'AI 학습 노트'}</span>
+        </button>
         <button
           onClick={onTranslate}
           disabled={isTranslating}

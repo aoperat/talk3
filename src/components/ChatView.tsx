@@ -16,6 +16,9 @@ interface ChatViewProps {
   isTranslating: boolean;
   disabled?: boolean;
   onLeaveRoom?: () => void;
+   onGenerateStudyNote: () => void;
+   isGeneratingStudyNote: boolean;
+   canGenerateStudyNote: boolean;
 }
 
 export default function ChatView({
@@ -29,6 +32,9 @@ export default function ChatView({
   isTranslating,
   disabled,
   onLeaveRoom,
+  onGenerateStudyNote,
+  isGeneratingStudyNote,
+  canGenerateStudyNote,
 }: ChatViewProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +70,9 @@ export default function ChatView({
         onTranslate={onTranslate}
         isTranslating={isTranslating}
         onLeaveRoom={onLeaveRoom}
+        onGenerateStudyNote={onGenerateStudyNote}
+        isGeneratingStudyNote={isGeneratingStudyNote}
+        canGenerateStudyNote={canGenerateStudyNote}
       />
 
       {/* 메시지 리스트 */}

@@ -46,6 +46,40 @@ function App() {
     return (saved === 'chats' || saved === 'people') ? saved : 'chats';
   });
 
+  const [activeRoomId, setActiveRoomId] = useState<number | null>(() => {
+    // 친구 탭이면 대화창을 열지 않음
+    const savedTab = localStorage.getItem('activeTab');
+    if (savedTab === 'people') {
+      return null;
+    }
+    const saved = localStorage.getItem('activeRoomId');
+    return saved ? parseInt(saved, 10) : null;
+  });
+
+  // activeRoomId와 activeTab 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (activeRoomId !== null) {
+      localStorage.setItem('activeRoomId', activeRoomId.toString());
+    } else {
+      localStorage.removeItem('activeRoomId');
+    }
+  }, [activeRoomId]);
+
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+    // 친구 탭으로 변경할 때는 대화창 닫기
+    if (activeTab === 'people' && activeRoomId !== null) {
+      setActiveRoomId(null);
+    }
+  }, [activeTab, activeRoomId]);
+
+  // activeRoomId가 더 이상 존재하지 않는 방이면 null로 설정
+  useEffect(() => {
+    if (activeRoomId !== null && !rooms.find(r => r.id === activeRoomId)) {
+      setActiveRoomId(null);
+    }
+  }, [activeRoomId, rooms]);
+
   // 초기 history 상태 설정 및 URL 파라미터 처리 (알림 클릭 등)
   useEffect(() => {
     // 기본 상태: 방 선택 없음
@@ -121,40 +155,6 @@ function App() {
       window.removeEventListener('navigateToRoom', handleNavigateToRoom as EventListener);
     };
   }, []);
-  
-  const [activeRoomId, setActiveRoomId] = useState<number | null>(() => {
-    // 친구 탭이면 대화창을 열지 않음
-    const savedTab = localStorage.getItem('activeTab');
-    if (savedTab === 'people') {
-      return null;
-    }
-    const saved = localStorage.getItem('activeRoomId');
-    return saved ? parseInt(saved, 10) : null;
-  });
-  
-  // activeRoomId와 activeTab 변경 시 localStorage에 저장
-  useEffect(() => {
-    if (activeRoomId !== null) {
-      localStorage.setItem('activeRoomId', activeRoomId.toString());
-    } else {
-      localStorage.removeItem('activeRoomId');
-    }
-  }, [activeRoomId]);
-  
-  useEffect(() => {
-    localStorage.setItem('activeTab', activeTab);
-    // 친구 탭으로 변경할 때는 대화창 닫기
-    if (activeTab === 'people' && activeRoomId !== null) {
-      setActiveRoomId(null);
-    }
-  }, [activeTab, activeRoomId]);
-  
-  // activeRoomId가 더 이상 존재하지 않는 방이면 null로 설정
-  useEffect(() => {
-    if (activeRoomId !== null && !rooms.find(r => r.id === activeRoomId)) {
-      setActiveRoomId(null);
-    }
-  }, [activeRoomId, rooms]);
 
   // URL 파라미터에서 room ID 확인 (알림 클릭 시)
   useEffect(() => {
@@ -204,6 +204,15 @@ function App() {
   }, []);
 
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isGeneratingStudyNote, setIsGeneratingStudyNote] = useState(false);
+  const [showStudyModal, setShowStudyModal] = useState(false);
+  const [activeStudyTab, setActiveStudyTab] = useState<'script' | 'expressions' | 'vocab'>('script');
+  const [studyData, setStudyData] = useState<{
+    topic: string;
+    script: { speaker: string; en: string; ko: string }[];
+    expressions: { en: string; ko: string; tip: string }[];
+    vocab: { word: string; meaning: string }[];
+  } | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
@@ -234,6 +243,121 @@ function App() {
   const activeRoom = rooms.find((r) => r.id === activeRoomId);
   const unreadCount = rooms.reduce((sum, r) => sum + (r.unread || 0), 0);
   const friendRequestCount = friendRequests.length;
+  const canGenerateStudyNote = !!activeRoomId && messages.length > 0;
+
+  const handleGenerateStudyNote = async () => {
+    if (!activeRoomId) return;
+
+    if (!messages || messages.length === 0) {
+      alert('학습 노트를 생성할 대화가 없습니다. 먼저 친구와 대화를 나눠보세요!');
+      return;
+    }
+
+    const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      alert('OpenAI API 키가 설정되지 않았습니다. .env 파일에 VITE_OPENAI_API_KEY를 추가하세요.');
+      return;
+    }
+
+    setIsGeneratingStudyNote(true);
+    try {
+      // 최근 50개 메시지만 사용 (토큰 절약)
+      const recentMessages = messages.slice(-50);
+
+      const chatLog = recentMessages
+        .map((m) => {
+          const speaker =
+            m.sender === 'me'
+              ? 'Me'
+              : m.senderName || 'Friend';
+          const ko = m.text || '';
+          const en = m.textEn || '';
+          return `- [${speaker}] KO: ${ko}${en ? `\n  EN: ${en}` : ''}`;
+        })
+        .join('\n');
+
+      const prompt = `You are an AI English tutor.
+You will receive a bilingual chat log between a Korean learner ("Me") and a friend.
+Your job is to:
+1) Reconstruct a clean, natural English conversation script based on the chat (not word-for-word, but natural).
+2) Provide key expressions with Korean explanations and usage tips.
+3) Provide a short vocabulary list.
+
+Return ONLY a valid JSON object in the following TypeScript shape (no markdown, no extra text):
+{
+  "topic": string,
+  "script": { "speaker": "Me" | "Friend", "en": string, "ko": string }[],
+  "expressions": { "en": string, "ko": string, "tip": string }[],
+  "vocab": { "word": string, "meaning": string }[]
+}
+
+Rules:
+- "script.en" is the reconstructed natural English line.
+- "script.ko" is a smooth natural Korean translation of that English line.
+- "expressions" should be 3~6 important patterns or sentences from the script.
+- "vocab" should be 5~10 important single words (no phrases).
+- Do NOT include any explanations outside the JSON.
+
+Here is the chat log:
+${chatLog}`;
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful AI English tutor that outputs strict JSON.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.4,
+          max_tokens: 1200,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('OpenAI Study Note API error:', errorText);
+        alert('AI 학습 노트 생성 중 오류가 발생했습니다.');
+        return;
+      }
+
+      const data = await response.json();
+      const content: string | undefined = data.choices?.[0]?.message?.content;
+
+      if (!content) {
+        alert('AI 학습 노트 결과를 받지 못했습니다.');
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(content);
+        if (!parsed || !parsed.script) {
+          throw new Error('Invalid study note format');
+        }
+        setStudyData(parsed);
+        setActiveStudyTab('script');
+        setShowStudyModal(true);
+      } catch (e) {
+        console.error('Failed to parse study note JSON:', e, content);
+        alert('AI 학습 노트 형식을 해석하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      }
+    } catch (error) {
+      console.error('Study note generation error:', error);
+      alert('AI 학습 노트 생성 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setIsGeneratingStudyNote(false);
+    }
+  };
 
   const handleTranslateRoom = async () => {
     if (!activeRoomId) return;
@@ -246,83 +370,150 @@ function App() {
 
     setIsTranslating(true);
     try {
-      const { data: messages, error: fetchError } = await supabase
+      // 1) 이 방의 전체 메시지(한/영)를 시간순으로 조회
+      const { data: allMessages, error: fetchError } = await supabase
         .from('messages')
-        .select('id, content_ko')
+        .select('id, content_ko, content_en, created_at')
         .eq('room_id', activeRoomId)
-        .is('content_en', null)
-        .not('content_ko', 'is', null)
         .order('created_at', { ascending: true });
 
       if (fetchError) {
         throw fetchError;
       }
 
-      if (!messages || messages.length === 0) {
+      if (!allMessages || allMessages.length === 0) {
         alert('번역할 메시지가 없습니다.');
         setIsTranslating(false);
         return;
       }
 
-      let translatedCount = 0;
-      for (const msg of messages) {
-        if (!msg.content_ko) continue;
+      // 번역이 아직 안 된 한국어 메시지들만 타깃으로 선택
+      const targetMessages = allMessages.filter(
+        (m) => !m.content_en && m.content_ko && m.content_ko.trim().length > 0
+      );
 
-        try {
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${openaiApiKey}`,
+      if (targetMessages.length === 0) {
+        alert('새로 번역할 한국어 메시지가 없습니다.');
+        setIsTranslating(false);
+        return;
+      }
+
+      // 맥락을 위해, 첫 번째 타깃 메시지 이전의 최근 N개 메시지를 컨텍스트로 포함
+      const firstTargetIndex = allMessages.findIndex((m) => m.id === targetMessages[0].id);
+      const CONTEXT_BEFORE_COUNT = 20; // 앞에서 최대 20개 정도만 컨텍스트로 사용
+      const contextStart = Math.max(0, firstTargetIndex - CONTEXT_BEFORE_COUNT);
+      const contextMessages = allMessages.slice(contextStart, firstTargetIndex);
+
+      // 2) 프롬프트용 큰 텍스트 구성
+      // CONTEXT: 이미 번역된 영어/한국어 포함 (번역 대상 아님)
+      const contextLines = contextMessages.map((m) => {
+        const text = m.content_en || m.content_ko || '';
+        return `${m.id}: ${text}`;
+      });
+
+      // TARGET: 실제로 번역해야 할 한국어만 별도로 표시
+      const targetLines = targetMessages.map((m) => `TARGET ${m.id}: ${m.content_ko}`);
+
+      const bigText =
+        (contextLines.length > 0
+          ? `CONTEXT (do not translate these lines, they are only for understanding):\n` +
+            contextLines.join('\n') +
+            '\n\n'
+          : '') +
+        `TARGET (translate ONLY these lines, keep the same IDs):\n` +
+        targetLines.join('\n');
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are a professional translator.\n' +
+                '- You will receive a chat log.\n' +
+                '- First section is CONTEXT: NEVER translate or change those lines. They are only for understanding.\n' +
+                '- Second section is TARGET: ONLY translate these lines.\n' +
+                '- Each TARGET line starts with `TARGET <id>:`. Translate ONLY the Korean text, keep the same `<id>`.\n' +
+                '- Return one line per TARGET input, in the format: `TARGET <id>: <English translation>`.\n' +
+                '- Do NOT output the CONTEXT lines.\n' +
+                '- Do NOT add extra commentary or explanations.',
             },
-            body: JSON.stringify({
-              model: 'gpt-3.5-turbo',
-              messages: [
-                {
-                  role: 'system',
-                  content:
-                    'You are a professional translator. Translate the following Korean text to English. Only return the translation, no explanations.',
-                },
-                {
-                  role: 'user',
-                  content: msg.content_ko,
-                },
-              ],
-              temperature: 0.3,
-              max_tokens: 500,
-            }),
-          });
+            {
+              role: 'user',
+              content: bigText,
+            },
+          ],
+          temperature: 0.3,
+          max_tokens: 2000,
+        }),
+      });
 
-          if (!response.ok) {
-            const errorData = await response.text();
-            console.error('OpenAI API error:', errorData);
-            continue;
-          }
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('OpenAI API error:', errorData);
+        alert('번역 API 호출 중 오류가 발생했습니다.');
+        return;
+      }
 
-          const data = await response.json();
-          const translatedText = data.choices[0]?.message?.content?.trim();
+      const data = await response.json();
+      const translatedAll: string | undefined = data.choices[0]?.message?.content;
 
-          if (translatedText) {
-            const { error: updateError } = await supabase
-              .from('messages')
-              .update({ content_en: translatedText })
-              .eq('id', msg.id);
+      if (!translatedAll) {
+        alert('번역 결과를 받지 못했습니다.');
+        return;
+      }
 
-            if (!updateError) {
-              translatedCount++;
-            } else {
-              console.error('Error updating message:', updateError);
-            }
-          }
-        } catch (error) {
-          console.error('Error translating message:', error);
-          continue;
+      // 2) 번역 결과를 줄 단위로 나누고, ID별로 매핑
+      const resultLines = translatedAll
+        .split('\n')
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 0);
+
+      const updatePayload: { id: string; content_en: string }[] = [];
+
+      for (const line of resultLines) {
+        // TARGET <id>: translated text
+        if (!line.startsWith('TARGET ')) continue;
+        const withoutPrefix = line.replace(/^TARGET\s+/, '');
+        const sepIndex = withoutPrefix.indexOf(':');
+        if (sepIndex === -1) continue;
+
+        const id = withoutPrefix.slice(0, sepIndex).trim();
+        const textEn = withoutPrefix.slice(sepIndex + 1).trim();
+
+        if (!id || !textEn) continue;
+
+        updatePayload.push({ id, content_en: textEn });
+      }
+
+      if (updatePayload.length === 0) {
+        alert('번역 결과를 파싱하지 못했습니다.');
+        return;
+      }
+
+      // 3) Supabase에 각 메시지별로 번역 결과 반영 (배치 업데이트)
+      let translatedCount = 0;
+      for (const item of updatePayload) {
+        const { error: updateError } = await supabase
+          .from('messages')
+          .update({ content_en: item.content_en })
+          .eq('id', item.id);
+
+        if (!updateError) {
+          translatedCount++;
+        } else {
+          console.error('Error updating message:', updateError, 'id:', item.id);
         }
       }
 
       if (translatedCount > 0) {
         console.log(`번역 완료: ${translatedCount}개 메시지`);
-        // 번역 완료 후 즉시 메시지 새로고침
         refreshMessages();
       } else {
         alert('번역 중 오류가 발생했습니다.');
@@ -524,6 +715,9 @@ function App() {
           isTranslating={isTranslating}
           disabled={messagesLoading || roomsLoading}
           onLeaveRoom={activeRoomId ? () => handleLeaveRoom(activeRoomId) : undefined}
+          onGenerateStudyNote={handleGenerateStudyNote}
+          isGeneratingStudyNote={isGeneratingStudyNote}
+          canGenerateStudyNote={canGenerateStudyNote}
         />
 
         {/* Mobile Bottom Navigation */}
@@ -650,6 +844,130 @@ function App() {
               <span>로그아웃</span>
             </button>
           </div>
+        </Modal>
+
+        {/* AI 학습 노트 모달 */}
+        <Modal
+          isOpen={showStudyModal && !!studyData}
+          onClose={() => setShowStudyModal(false)}
+          title="AI 학습 노트"
+        >
+          {studyData && (
+            <div className="space-y-4">
+              <div className="pb-3 border-b border-gray-100">
+                <h3 className="text-sm font-bold text-gray-900 mb-1">
+                  {studyData.topic || (activeRoom?.name ? `${activeRoom.name}와의 대화` : 'Reconstructed Conversation')}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  실제 대화를 바탕으로 AI가 재구성한 영어 회화 스크립트와 학습 포인트입니다.
+                </p>
+              </div>
+
+              {/* 탭 */}
+              <div className="flex border-b border-gray-100 text-xs font-bold">
+                <button
+                  className={`flex-1 py-2 border-b-2 ${
+                    activeStudyTab === 'script'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-400'
+                  }`}
+                  onClick={() => setActiveStudyTab('script')}
+                >
+                  스크립트
+                </button>
+                <button
+                  className={`flex-1 py-2 border-b-2 ${
+                    activeStudyTab === 'expressions'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-400'
+                  }`}
+                  onClick={() => setActiveStudyTab('expressions')}
+                >
+                  핵심 표현
+                </button>
+                <button
+                  className={`flex-1 py-2 border-b-2 ${
+                    activeStudyTab === 'vocab'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-400'
+                  }`}
+                  onClick={() => setActiveStudyTab('vocab')}
+                >
+                  단어
+                </button>
+              </div>
+
+              {/* 내용 */}
+              <div className="max-h-[420px] overflow-y-auto space-y-4">
+                {activeStudyTab === 'script' && (
+                  <div className="space-y-3">
+                    {studyData.script?.map((line, idx) => (
+                      <div key={idx} className="flex gap-3">
+                        <div
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                            line.speaker === 'Me'
+                              ? 'bg-indigo-100 text-indigo-600'
+                              : 'bg-gray-200 text-gray-600'
+                          }`}
+                        >
+                          {line.speaker}
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <div className="text-sm font-medium text-gray-900 leading-relaxed">
+                            {line.en}
+                          </div>
+                          <div className="text-xs text-gray-500">{line.ko}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {(!studyData.script || studyData.script.length === 0) && (
+                      <p className="text-xs text-gray-400">스크립트가 비어 있습니다.</p>
+                    )}
+                  </div>
+                )}
+
+                {activeStudyTab === 'expressions' && (
+                  <div className="space-y-3">
+                    {studyData.expressions?.map((expr, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm"
+                      >
+                        <div className="text-xs font-bold text-gray-900 mb-1">
+                          {expr.en}
+                        </div>
+                        <div className="text-xs text-gray-500 mb-2">{expr.ko}</div>
+                        <div className="text-[11px] text-gray-600 bg-gray-50 rounded-lg p-2 leading-relaxed">
+                          <span className="font-bold text-indigo-600 mr-1">Tip</span>
+                          {expr.tip}
+                        </div>
+                      </div>
+                    ))}
+                    {(!studyData.expressions || studyData.expressions.length === 0) && (
+                      <p className="text-xs text-gray-400">핵심 표현이 없습니다.</p>
+                    )}
+                  </div>
+                )}
+
+                {activeStudyTab === 'vocab' && (
+                  <div className="space-y-2">
+                    {studyData.vocab?.map((v, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between bg-white border border-gray-100 rounded-lg px-3 py-2 text-xs"
+                      >
+                        <span className="font-mono font-bold text-gray-800">{v.word}</span>
+                        <span className="text-gray-500">{v.meaning}</span>
+                      </div>
+                    ))}
+                    {(!studyData.vocab || studyData.vocab.length === 0) && (
+                      <p className="text-xs text-gray-400">단어 목록이 없습니다.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </Modal>
       </div>
     </div>
