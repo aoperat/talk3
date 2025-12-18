@@ -46,8 +46,13 @@ function App() {
     return (saved === 'chats' || saved === 'people') ? saved : 'chats';
   });
 
-  // URL 파라미터에서 room ID 확인 (알림 클릭 시)
+  // 초기 history 상태 설정 및 URL 파라미터 처리 (알림 클릭 등)
   useEffect(() => {
+    // 기본 상태: 방 선택 없음
+    if (!window.history.state || typeof window.history.state?.roomId === 'undefined') {
+      window.history.replaceState({ roomId: null }, '', window.location.pathname + window.location.search);
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const roomIdParam = urlParams.get('room');
     if (roomIdParam) {
@@ -55,11 +60,53 @@ function App() {
       if (!isNaN(roomId)) {
         setActiveRoomId(roomId);
         setActiveTab('chats');
-        // URL에서 파라미터 제거
-        window.history.replaceState({}, '', window.location.pathname);
+        // URL에서 파라미터 제거 (하지만 state는 유지)
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('room');
+        window.history.replaceState({ roomId }, '', newUrl.toString());
       }
     }
   }, []);
+
+  // 브라우저 / PWA 뒤로가기 처리: 방 → 목록으로 이동
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const state = event.state as { roomId?: number | null } | null;
+      const roomIdFromState = state?.roomId ?? null;
+
+      if (roomIdFromState) {
+        setActiveTab('chats');
+        setActiveRoomId(roomIdFromState);
+      } else {
+        setActiveRoomId(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  // 방 진입/이탈 시 history 스택에 상태 기록
+  useEffect(() => {
+    // 첫 마운트에서 replaceState로 이미 설정했으므로, 이후 변경만 push
+    const currentState = window.history.state as { roomId?: number | null } | null;
+    const currentRoomIdInState = currentState?.roomId ?? null;
+
+    if (activeRoomId === currentRoomIdInState) {
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    if (activeRoomId) {
+      url.searchParams.set('room', String(activeRoomId));
+      window.history.pushState({ roomId: activeRoomId }, '', url.toString());
+    } else {
+      url.searchParams.delete('room');
+      window.history.pushState({ roomId: null }, '', url.toString());
+    }
+  }, [activeRoomId]);
 
   // 알림 클릭 이벤트 리스너
   useEffect(() => {
